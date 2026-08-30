@@ -1,247 +1,214 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '../../utils/supabase';
 
-type UserSession = { name: string, role: string, email: string };
-
-export default function DepartmentDashboard() {
+export default function DashboardRoot() {
   const router = useRouter();
-  const [user, setUser] = useState<UserSession | null>(null);
-  const [stats, setStats] = useState({ totalStudents: 0, activeCourses: 0, pendingClearances: 0 });
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userName, setUserName] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Password Modal State
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [pwdMessage, setPwdMessage] = useState({ type: '', text: '' });
-  const [isUpdatingPwd, setIsUpdatingPwd] = useState(false);
+  // HOD Aggregated Metrics
+  const [metrics, setMetrics] = useState({
+    totalStudents: 0,
+    totalRevenuePending: 0,
+    avgAttendance: 0,
+    studentsAtRisk: 0,
+    activeCourses: 0,
+  });
 
   useEffect(() => {
     const session = localStorage.getItem('faculty_user');
     if (!session) {
-      router.push('/login');
+      router.replace('/login');
       return;
     }
-    
-    setUser(JSON.parse(session));
 
-    async function fetchStats() {
-      const { count: studentCount } = await supabase.from('master_students').select('*', { count: 'exact', head: true });
-      const { count: courseCount } = await supabase.from('courses').select('*', { count: 'exact', head: true });
-      setStats({
-        totalStudents: studentCount || 0,
-        activeCourses: courseCount || 0,
-        pendingClearances: 0 // You can calculate this dynamically if needed
-      });
+    const user = JSON.parse(session);
+    setUserRole(user.role);
+    setUserName(user.name);
+
+    // Auto-Redirect Faculty to their specific workspaces
+    if (user.role === 'finance') {
+      router.replace('/dashboard/studAff');
+    } else if (user.role === 'academic') {
+      router.replace('/dashboard/academic');
+    } else if (user.role === 'exam') {
+      router.replace('/dashboard/exam');
+    } else if (user.role === 'advisor') {
+      router.replace('/dashboard/advisor');
+    } else if (user.role === 'hod') {
+      fetchHODMetrics();
     }
-    fetchStats();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('faculty_user');
-    router.push('/login');
+  const fetchHODMetrics = async () => {
+    setIsLoading(true);
+    
+    // Fetch system-wide data for the HOD overview
+    const { data: students } = await supabase.from('master_students').select('*');
+    const { data: courses } = await supabase.from('courses').select('id');
+
+    if (students) {
+      let pendingRevenue = 0;
+      let totalAtt = 0;
+      let atRisk = 0;
+
+      students.forEach(s => {
+        pendingRevenue += (s.agreed_monthly_fee || 0) + (s.agreed_semester_fee || 0) + (s.agreed_ru_exam_fee || 0);
+        totalAtt += (s.attendance_percentage || 0);
+        if ((s.attendance_percentage || 0) < 60) atRisk++;
+      });
+
+      setMetrics({
+        totalStudents: students.length,
+        totalRevenuePending: pendingRevenue,
+        avgAttendance: students.length > 0 ? Math.round(totalAtt / students.length) : 0,
+        studentsAtRisk: atRisk,
+        activeCourses: courses ? courses.length : 0
+      });
+    }
+    
+    setIsLoading(false);
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setIsUpdatingPwd(true);
-    setPwdMessage({ type: '', text: '' });
+  // Prevent UI flash while routing standard faculty members
+  if (isLoading || userRole === 'finance' || userRole === 'academic' || userRole === 'exam' || userRole === 'advisor') {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mb-4"></div>
+        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Initializing Environment</p>
+      </div>
+    );
+  }
 
-    // 1. Verify the old password first
-    const { data: userData, error: verifyError } = await supabase
-      .from('faculty_users')
-      .select('password')
-      .eq('email', user.email)
-      .single();
-
-    if (verifyError || userData?.password !== oldPassword) {
-      setPwdMessage({ type: 'error', text: 'Current password is incorrect.' });
-      setIsUpdatingPwd(false);
-      return;
-    }
-
-    // 2. Update to the new password
-    const { error: updateError } = await supabase
-      .from('faculty_users')
-      .update({ password: newPassword })
-      .eq('email', user.email);
-
-    if (updateError) {
-      setPwdMessage({ type: 'error', text: 'Failed to update password. Try again.' });
-    } else {
-      setPwdMessage({ type: 'success', text: 'Password successfully updated!' });
-      setOldPassword('');
-      setNewPassword('');
-      // Auto-close modal after success
-      setTimeout(() => {
-        setShowPasswordModal(false);
-        setPwdMessage({ type: '', text: '' });
-      }, 2000);
-    }
-    setIsUpdatingPwd(false);
-  };
-
-  if (!user) return <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center text-gray-500">Loading secure portal...</div>;
-
-  // Enforce rigid access control
-  const isHOD = user.role === 'hod';
-  const canSeeAcademic = isHOD || user.role === 'academic';
-  const canSeeExam = isHOD || user.role === 'exam';
-  const canSeeFinance = isHOD || user.role === 'finance';
-
+  // --- HOD COMMAND CENTER UI ---
   return (
-    <div className="min-h-screen bg-[#f8fafc] p-8 relative">
-      <header className="mb-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-          <div>
-            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight mb-2">Department of CSE</h1>
-            <p className="text-lg text-gray-600 font-medium">Imperial College of Engineering • Faculty Portal</p>
-          </div>
-          <div className="mt-4 md:mt-0 flex items-center space-x-4">
-            <div className="text-right mr-2">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{user.role} Privilege</span>
-              <p className="text-indigo-700 font-bold text-lg">{user.name}</p>
-            </div>
-            
-            {/* Account Controls */}
-            <div className="flex flex-col space-y-2">
-              <button 
-                onClick={() => setShowPasswordModal(true)} 
-                className="px-4 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-50 hover:text-indigo-600 transition-colors shadow-sm"
-              >
-                Change Password
-              </button>
-              <button 
-                onClick={handleLogout} 
-                className="px-4 py-1.5 border border-red-200 bg-red-50 rounded-lg text-xs font-bold text-red-600 hover:bg-red-100 transition-colors shadow-sm"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-[#f8fafc] p-6 lg:p-10 font-sans text-slate-800">
+      
+      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Department Overview</h1>
+          <p className="text-sm font-semibold text-slate-500 mt-1 uppercase tracking-wider">
+            {userName} | Head of Department
+          </p>
         </div>
+        
+        <button 
+          onClick={() => {
+            localStorage.removeItem('faculty_user');
+            router.push('/login');
+          }}
+          className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
+        >
+          End Session
+        </button>
       </header>
 
-      {/* High-Level Stats (Only HOD sees full metrics) */}
-      {isHOD && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-            <div>
-              <p className="text-sm font-bold text-gray-500 uppercase">Enrolled Students</p>
-              <p className="text-3xl font-extrabold text-gray-900 mt-1">{stats.totalStudents}</p>
-            </div>
-            <div className="p-4 bg-blue-50 rounded-xl text-blue-600 text-3xl">🎓</div>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-            <div>
-              <p className="text-sm font-bold text-gray-500 uppercase">Active Courses</p>
-              <p className="text-3xl font-extrabold text-gray-900 mt-1">{stats.activeCourses}</p>
-            </div>
-            <div className="p-4 bg-purple-50 rounded-xl text-purple-600 text-3xl">📚</div>
-          </div>
+      {/* --- EXECUTIVE SUMMARY METRICS --- */}
+      <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Executive Summary</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Enrollment</p>
+          <p className="text-3xl font-black text-slate-900">{metrics.totalStudents}</p>
         </div>
-      )}
+        
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Outstanding Dues</p>
+          <p className="text-3xl font-black text-rose-600">৳{metrics.totalRevenuePending.toLocaleString()}</p>
+        </div>
 
-      <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Your Authorized Workspaces</h2>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Average Attendance</p>
+          <p className="text-3xl font-black text-slate-900">{metrics.avgAttendance}%</p>
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {canSeeAcademic && (
-          <Link href="/dashboard/academic" className="group block h-full">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full transition-all hover:shadow-md hover:border-indigo-300 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
-              <div className="flex items-center space-x-3 mb-4"><span className="text-3xl">📋</span><h3 className="text-lg font-bold text-gray-900">Academic Coordination</h3></div>
-              <p className="text-sm text-gray-600">Manage class attendance, update CT marks, and assign faculty.</p>
-            </div>
-          </Link>
-        )}
-
-        {canSeeExam && (
-          <Link href="/dashboard/exam" className="group block h-full">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full transition-all hover:shadow-md hover:border-blue-300 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
-              <div className="flex items-center space-x-3 mb-4"><span className="text-3xl">📝</span><h3 className="text-lg font-bold text-gray-900">Examination Center</h3></div>
-              <p className="text-sm text-gray-600">Process exam clearances, check eligibility, and generate admit cards.</p>
-            </div>
-          </Link>
-        )}
-
-        {canSeeFinance && (
-          <Link href="/dashboard/studAff" className="group block h-full">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full transition-all hover:shadow-md hover:border-emerald-300 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
-              <div className="flex items-center space-x-3 mb-4"><span className="text-3xl">💵</span><h3 className="text-lg font-bold text-gray-900">Student Affairs (Finance)</h3></div>
-              <p className="text-sm text-gray-600">Update financial dues, log payments, and manage fee clearings.</p>
-            </div>
-          </Link>
-        )}
-
-        {isHOD && (
-          <Link href="/dashboard/hod" className="group block h-full">
-            <div className="bg-gray-900 rounded-xl shadow-sm border border-gray-800 p-6 h-full transition-all hover:shadow-lg relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-amber-500"></div>
-              <div className="flex items-center space-x-3 mb-4"><span className="text-3xl">👑</span><h3 className="text-lg font-bold text-white">HOD Command Center</h3></div>
-              <p className="text-sm text-gray-400">Executive dashboard. Monitor level-3 escalations and department bottlenecks.</p>
-            </div>
-          </Link>
-        )}
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm bg-gradient-to-br from-white to-rose-50">
+          <p className="text-xs font-bold text-rose-600 uppercase mb-1">Students At Risk (&lt;60%)</p>
+          <p className="text-3xl font-black text-rose-700">{metrics.studentsAtRisk}</p>
+        </div>
       </div>
 
-      {/* Change Password Modal Overlay */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-8 max-w-sm w-full relative">
-            <button 
-              onClick={() => { setShowPasswordModal(false); setPwdMessage({ type: '', text: '' }); }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 font-bold"
-            >
-              ✕
-            </button>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Change Password</h3>
-            <p className="text-sm text-gray-500 mb-6">Update credentials for {user.email}</p>
-
-            {pwdMessage.text && (
-              <div className={`mb-4 p-3 rounded text-sm font-medium ${pwdMessage.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                {pwdMessage.text}
-              </div>
-            )}
-
-            <form onSubmit={handlePasswordChange} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                <input
-                  type="password"
-                  required
-                  value={oldPassword}
-                  onChange={(e) => setOldPassword(e.target.value)}
-                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                  minLength={6}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isUpdatingPwd}
-                className="w-full bg-indigo-600 text-white rounded p-2 text-sm font-bold hover:bg-indigo-700 transition-colors mt-2 disabled:bg-indigo-400"
-              >
-                {isUpdatingPwd ? 'Updating...' : 'Save New Password'}
-              </button>
-            </form>
+      {/* --- SYSTEM MODULES --- */}
+      <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Department Portals</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* FINANCE PORTAL */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 bg-emerald-50/30">
+            <h3 className="text-lg font-black text-slate-900">Finance & Student Affairs</h3>
+            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Teacher 1</p>
+          </div>
+          <div className="p-6 flex-grow flex flex-col justify-between">
+            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span> Fee Structure Configuration</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span> Batch-wide Mass Billing</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span> Individual Payment Receipts</li>
+            </ul>
+            <Link href="/dashboard/studAff" className="block w-full text-center py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors">
+              Access Finance Portal
+            </Link>
           </div>
         </div>
-      )}
+
+        {/* ACADEMIC PORTAL */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 bg-indigo-50/30">
+            <h3 className="text-lg font-black text-slate-900">Academic Coordination</h3>
+            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Teacher 3</p>
+          </div>
+          <div className="p-6 flex-grow flex flex-col justify-between">
+            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-2"></span> Curriculum Catalog ({metrics.activeCourses} Active)</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-2"></span> Bulk Attendance Processing</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-2"></span> CT Mark Automations</li>
+            </ul>
+            <Link href="/dashboard/academic" className="block w-full text-center py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors">
+              Access Academic Portal
+            </Link>
+          </div>
+        </div>
+
+        {/* EXAM CONTROL PORTAL */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 bg-purple-50/30">
+            <h3 className="text-lg font-black text-slate-900">Exam Control & Results</h3>
+            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Teacher 2</p>
+          </div>
+          <div className="p-6 flex-grow flex flex-col justify-between">
+            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Tabulate Final Grades</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Form Fill-up Management</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Generate Admit Cards & Transcripts</li>
+            </ul>
+            <Link href="/dashboard/exam-control" className="block w-full text-center py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors">
+              Access Exam Portal
+            </Link>
+          </div>
+        </div>
+
+        {/* ADVISORS PORTAL */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 bg-blue-50/30">
+            <h3 className="text-lg font-black text-slate-900">Student Advisory</h3>
+            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Batch Advisors</p>
+          </div>
+          <div className="p-6 flex-grow flex flex-col justify-between">
+            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Track Individual Progress</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Course Registration Approval</li>
+              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Mentoring Notes & Alerts</li>
+            </ul>
+            <Link href="/dashboard/advisors" className="block w-full text-center py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors">
+              Access Advisory Portal
+            </Link>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }

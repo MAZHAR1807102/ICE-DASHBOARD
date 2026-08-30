@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../utils/supabase';
+import { useRouter } from 'next/navigation';
 
 type ExamStudent = {
   id: string;
@@ -16,11 +17,34 @@ type ExamStudent = {
 };
 
 export default function ExaminationDashboard() {
+  const router = useRouter();
+
+  // --- AUTH & PASSWORD STATE ---
+  const [teacherName, setTeacherName] = useState('Loading Faculty...');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  // --- EXAM DATA STATE ---
   const [students, setStudents] = useState<ExamStudent[]>([]);
   const [selectedSemester, setSelectedSemester] = useState<string>('All');
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [message, setMessage] = useState('');
+
+  // --- INITIALIZATION ---
+  useEffect(() => {
+    // Fetch logged-in session data
+    const session = localStorage.getItem('faculty_user');
+    if (session) {
+      const user = JSON.parse(session);
+      setTeacherName(user.name);
+    } else {
+      router.replace('/login');
+    }
+    
+    fetchExamData();
+  }, [router]);
 
   const fetchExamData = async () => {
     const { data, error } = await supabase
@@ -31,12 +55,39 @@ export default function ExaminationDashboard() {
     if (!error && data) setStudents(data as ExamStudent[]);
   };
 
-  useEffect(() => { fetchExamData(); }, []);
+  // --- AUTHENTICATION ACTIONS ---
+  const handleLogout = () => {
+    localStorage.removeItem('faculty_user');
+    router.replace('/login');
+  };
 
-  const displayedStudents = selectedSemester === 'All' 
-    ? students 
-    : students.filter(s => s.semester.toString() === selectedSemester);
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      return alert('Password must be at least 6 characters long.');
+    }
+    
+    setIsUpdatingPassword(true);
+    const session = localStorage.getItem('faculty_user');
+    
+    if (session) {
+      const user = JSON.parse(session);
+      const { error } = await supabase
+        .from('faculty_users')
+        .update({ password: newPassword })
+        .eq('email', user.email);
 
+      if (!error) {
+        alert('Password updated successfully!');
+        setIsPasswordModalOpen(false);
+        setNewPassword('');
+      } else {
+        alert(`Error updating password: ${error.message}`);
+      }
+    }
+    setIsUpdatingPassword(false);
+  };
+
+  // --- EXAM WORKFLOW ACTIONS ---
   const updateExamStatus = async (uuid: string, newStatus: string) => {
     setIsUpdating(uuid);
     const { error } = await supabase
@@ -75,6 +126,10 @@ export default function ExaminationDashboard() {
     }
   };
 
+  const displayedStudents = selectedSemester === 'All' 
+    ? students 
+    : students.filter(s => s.semester.toString() === selectedSemester);
+
   const totalEligible = displayedStudents.length;
   const regCompleted = displayedStudents.filter(s => s.exam_reg_status === 'Done').length;
   const regPending = displayedStudents.filter(s => s.exam_reg_status === 'Pending').length;
@@ -82,9 +137,28 @@ export default function ExaminationDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Examination & Assessment</h1>
-        <p className="text-gray-600">Teacher 2 Portal | Department of CSE</p>
+      
+      {/* UPDATED HEADER WITH BUTTONS */}
+      <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Examination & Assessment</h1>
+          <p className="text-gray-600">{teacherName} | Department of CSE</p>
+        </div>
+        
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-bold shadow-sm transition-colors"
+          >
+            Change Password
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -154,7 +228,6 @@ export default function ExaminationDashboard() {
                 <th className="p-3 text-sm font-medium text-gray-600">College ID</th>
                 <th className="p-3 text-sm font-medium text-gray-600">RU ID</th>
                 <th className="p-3 text-sm font-medium text-gray-600">Name</th>
-                {/* NEW: Attendance Header */}
                 <th className="p-3 text-sm font-medium text-gray-600">Attendance</th>
                 <th className="p-3 text-sm font-medium text-gray-600">Exam Reg.</th>
                 <th className="p-3 text-sm font-medium text-gray-600">Backlogs</th>
@@ -169,7 +242,6 @@ export default function ExaminationDashboard() {
                   <td className="p-3 text-sm text-gray-900">{student.ru_id || 'N/A'}</td>
                   <td className="p-3 text-sm font-medium text-gray-900">{student.name}</td>
                   
-                  {/* NEW: Attendance Data Cell with Color Coding */}
                   <td className="p-3 text-sm">
                     <span className={`font-medium ${student.attendance_percentage < 75 ? 'text-red-600' : 'text-green-600'}`}>
                       {student.attendance_percentage}%
@@ -209,7 +281,6 @@ export default function ExaminationDashboard() {
               ))}
               {displayedStudents.length === 0 && (
                 <tr>
-                  {/* Increased colSpan to 8 to account for the new column */}
                   <td colSpan={8} className="p-6 text-center text-gray-500 text-sm">
                     No students found for this semester.
                   </td>
@@ -219,6 +290,39 @@ export default function ExaminationDashboard() {
           </table>
         </div>
       </div>
+
+      {/* PASSWORD CHANGE MODAL */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 text-lg">Change Password</h3>
+              <button onClick={() => setIsPasswordModalOpen(false)} className="text-gray-400 hover:text-gray-700 font-bold text-xl">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-gray-500 mb-4">Update the login password for your faculty account. This will take effect immediately.</p>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">New Password</label>
+                <input 
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-gray-800"
+                />
+              </div>
+              <button 
+                onClick={handleUpdatePassword} 
+                disabled={isUpdatingPassword}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors disabled:opacity-50"
+              >
+                {isUpdatingPassword ? 'Updating...' : 'Confirm Password Change'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
