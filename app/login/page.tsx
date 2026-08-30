@@ -1,15 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../utils/supabase';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
+
+  // Auto-skip if the device already remembers an active session
+  useEffect(() => {
+    const session = localStorage.getItem('faculty_user');
+    if (session) {
+      router.replace('/dashboard');
+    }
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,100 +25,99 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // 1. Log to console so we know the button click worked
-      console.log("Attempting to log in with:", email);
-
-      const { data, error: dbError } = await supabase
+      // Fetch the user from your dynamic faculty_users table
+      const { data: user, error: dbError } = await supabase
         .from('faculty_users')
         .select('*')
         .eq('email', email)
         .eq('password', password)
         .single();
 
-      // 2. Catch Supabase-specific database errors
-      if (dbError) {
-        console.error("Supabase Error:", dbError);
-        setError(`Login failed: ${dbError.message}`);
+      if (dbError || !user) {
+        setError('Invalid credentials. Please verify your email and password.');
         setIsLoading(false);
         return;
       }
 
-      if (!data) {
-        setError('Invalid email or password.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 3. Success! Save and redirect
-      localStorage.setItem('faculty_user', JSON.stringify({
-        name: data.name,
-        role: data.role,
-        email: data.email
-      }));
+      // Save the verified database session to device memory
+      const userSession = { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role, 
+        name: user.name 
+      };
+      localStorage.setItem('faculty_user', JSON.stringify(userSession));
       
-      console.log("Login successful, redirecting...");
-      router.push('/dashboard');
+      // Redirect to the traffic director
+      router.replace('/dashboard');
 
-    } catch (err: any) {
-      // 4. Catch critical network or code crashes
-      console.error("Critical Crash:", err);
-      setError(`System Error: ${err.message || "Check the developer console"}`);
+    } catch (err) {
+      setError('A connection error occurred. Please try again.');
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-        
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-indigo-600 rounded-lg mx-auto flex items-center justify-center mb-4 shadow-sm">
-            <span className="text-white text-xl font-bold">ICE</span>
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="flex justify-center -space-x-2 mb-6">
+          <div className="w-16 h-16 rounded-full bg-white shadow-md border-2 border-slate-200 flex items-center justify-center z-10">
+            <span className="text-sm font-black text-slate-400">ICE</span>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Faculty Portal Sign In</h2>
-          <p className="text-sm text-gray-500 mt-2">Department of Computer Science & Engineering</p>
+          <div className="w-16 h-16 rounded-full bg-indigo-50 shadow-md border-2 border-indigo-200 flex items-center justify-center z-0">
+            <span className="text-xs font-bold text-indigo-500">CSE</span>
+          </div>
         </div>
+        <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
+          Faculty Portal Access
+        </h2>
+        <p className="mt-2 text-center text-sm text-slate-600">
+          Sign in to manage departmental operations
+        </p>
+      </div>
 
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm font-medium mb-6 text-center border border-red-100">
-            {error}
-          </div>
-        )}
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow-xl shadow-slate-200/50 sm:rounded-xl sm:px-10 border border-slate-100">
+          <form className="space-y-6" onSubmit={handleLogin}>
+            {error && (
+              <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-md animate-in fade-in slide-in-from-top-2">
+                <p className="text-sm text-rose-700 font-bold">{error}</p>
+              </div>
+            )}
 
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-              placeholder="faculty@imperial.edu"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-              placeholder="••••••••"
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Institutional Email</label>
+              <input 
+                type="email" 
+                required 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none block w-full px-4 py-3 bg-white border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
+                placeholder="faculty@imperial.edu"
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-indigo-600 text-white rounded-lg p-3 text-sm font-bold hover:bg-indigo-700 transition-colors disabled:bg-indigo-400"
-          >
-            {isLoading ? 'Authenticating...' : 'Sign In'}
-          </button>
-        </form>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Password</label>
+              <input 
+                type="password" 
+                required 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="appearance-none block w-full px-4 py-3 bg-white border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
+                placeholder="••••••••"
+              />
+            </div>
 
+            <button 
+              type="submit" 
+              disabled={isLoading}
+              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50"
+            >
+              {isLoading ? 'Authenticating...' : 'Secure Sign In'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

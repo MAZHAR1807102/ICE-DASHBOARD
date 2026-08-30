@@ -2,6 +2,9 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../utils/supabase';
+import { useRouter } from 'next/navigation'; // Add this line
+
+
 
 type AcademicStudent = {
   id: string;
@@ -26,6 +29,13 @@ type Course = {
 };
 
 export default function AcademicDashboard() {
+
+  // --- AUTH & PASSWORD STATE ---
+  const router = useRouter();
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
   // --- STATE MANAGEMENT ---
   const [students, setStudents] = useState<AcademicStudent[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -78,8 +88,7 @@ export default function AcademicDashboard() {
           internal_marks_status: student.internal_marks_status || 'Pending',
           ct1: 0, ct2: 0, ct3: 0, ct4: 0 
         };
-      });
-
+      }); 
       if (activeTab === 'ct_marks' && selectedCourseCode) {
         const { data: marksData } = await supabase.from('ct_marks').select('*').eq('course_code', selectedCourseCode);
         if (marksData) {
@@ -97,6 +106,39 @@ export default function AcademicDashboard() {
     }
     if (courseData) setCourses(courseData as Course[]);
   };
+
+// --- AUTH ACTIONS ---
+  const handleLogout = () => {
+    localStorage.removeItem('faculty_user');
+    router.replace('/login');
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      return alert('Password must be at least 6 characters long.');
+    }
+    
+    setIsUpdatingPassword(true);
+    const session = localStorage.getItem('faculty_user');
+    
+    if (session) {
+      const user = JSON.parse(session);
+      const { error } = await supabase
+        .from('faculty_users')
+        .update({ password: newPassword })
+        .eq('email', user.email);
+
+      if (!error) {
+        alert('Password updated successfully!');
+        setIsPasswordModalOpen(false);
+        setNewPassword('');
+      } else {
+        alert(`Error updating password: ${error.message}`);
+      }
+    }
+    setIsUpdatingPassword(false);
+  };   
+
 
   // --- DERIVED SYNCHRONIZED DATA ---
   const displayedStudents = selectedSemester === 'All' ? students : students.filter(s => s.semester.toString() === selectedSemester);
@@ -370,6 +412,21 @@ export default function AcademicDashboard() {
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Academic Coordination</h1>
             <p className="text-sm font-medium text-slate-500 mt-1">{teacherName} | Department of CSE</p>
           </div>
+        </div>
+        {/* NEW: Auth Action Buttons */}
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold shadow-sm transition-colors"
+          >
+            Change Password
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
+          >
+            Logout
+          </button>
         </div>
       </header>
 
@@ -707,6 +764,37 @@ export default function AcademicDashboard() {
                   <input type="email" value={courseForm.teacher_email || ''} onChange={(e) => setCourseForm({...courseForm, teacher_email: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-purple-500" />
                 </div>
                 <button onClick={handleSaveCourse} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors">Update Course</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* PASSWORD CHANGE MODAL */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800 text-lg">Change Password</h3>
+              <button onClick={() => setIsPasswordModalOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold text-xl">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-500 mb-4">Update the login password for your faculty account. This will take effect immediately.</p>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">New Password</label>
+                <input 
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-800"
+                />
+              </div>
+              <button 
+                onClick={handleUpdatePassword} 
+                disabled={isUpdatingPassword}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors disabled:opacity-50"
+              >
+                {isUpdatingPassword ? 'Updating...' : 'Confirm Password Change'}
+              </button>
             </div>
           </div>
         </div>
