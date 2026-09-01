@@ -14,6 +14,7 @@ type AcademicStudent = {
   internal_marks_status: string;
   student_contact: string;
   guardian_contact: string;
+  advisor: string;
 };
 
 type Course = {
@@ -755,6 +756,24 @@ export default function AcademicDashboard() {
                   <select value={studentForm.semester} onChange={(e) => setStudentForm({...studentForm, semester: parseInt(e.target.value)})} className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                     {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Semester {n}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Semester</label>
+                  <select value={studentForm.semester} onChange={(e) => setStudentForm({...studentForm, semester: parseInt(e.target.value)})} className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Semester {n}</option>)}
+                  </select>
+                </div>
+                
+                {/* --- NEW ADVISOR FIELD --- */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Assigned Advisor</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Prof. Jane Doe"
+                    value={studentForm.advisor || ''} 
+                    onChange={(e) => setStudentForm({...studentForm, advisor: e.target.value})} 
+                    className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" 
+                  />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-bold text-slate-700 mb-1">Student Contact Number</label>
