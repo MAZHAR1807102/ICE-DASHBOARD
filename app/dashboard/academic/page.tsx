@@ -2,9 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../utils/supabase';
-import { useRouter } from 'next/navigation'; // Add this line
-
-
+import { useRouter } from 'next/navigation';
 
 type AcademicStudent = {
   id: string;
@@ -26,6 +24,7 @@ type Course = {
   credit: number;
   teacher_name: string;
   teacher_email: string;
+  attendance_sheet_url?: string; // NEW: Google Sheet URL reference
 };
 
 export default function AcademicDashboard() {
@@ -47,6 +46,7 @@ export default function AcademicDashboard() {
   
   const [isSaving, setIsSaving] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [sheetUrl, setSheetUrl] = useState(''); // State for Google Sheet URL
   
   // File Refs for CSV Uploads
   const ctFileInputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +107,30 @@ export default function AcademicDashboard() {
     if (courseData) setCourses(courseData as Course[]);
   };
 
-// --- AUTH ACTIONS ---
+  // --- DERIVED SYNCHRONIZED DATA ---
+  const displayedStudents = selectedSemester === 'All' ? students : students.filter(s => s.semester.toString() === selectedSemester);
+  const displayedCourses = selectedSemester === 'All' ? courses : courses.filter(c => c.semester.toString() === selectedSemester);
+  const currentCourseDetails = courses.find(c => c.course_code === selectedCourseCode);
+
+  // Sync Sheet URL input when a new course is selected
+  useEffect(() => {
+    if (currentCourseDetails) {
+      setSheetUrl(currentCourseDetails.attendance_sheet_url || '');
+    } else {
+      setSheetUrl('');
+    }
+  }, [currentCourseDetails]);
+
+  const handleInputChange = (id: string, field: string, value: string | number) => {
+    setEditValues(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  };
+
+  const showMessage = (msg: string) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(''), 4000);
+  };
+
+  // --- AUTH ACTIONS ---
   const handleLogout = () => {
     localStorage.removeItem('faculty_user');
     router.replace('/login');
@@ -117,10 +140,10 @@ export default function AcademicDashboard() {
     if (!newPassword || newPassword.length < 6) {
       return alert('Password must be at least 6 characters long.');
     }
-    
+
     setIsUpdatingPassword(true);
     const session = localStorage.getItem('faculty_user');
-    
+
     if (session) {
       const user = JSON.parse(session);
       const { error } = await supabase
@@ -139,25 +162,10 @@ export default function AcademicDashboard() {
     setIsUpdatingPassword(false);
   };   
 
-
-  // --- DERIVED SYNCHRONIZED DATA ---
-  const displayedStudents = selectedSemester === 'All' ? students : students.filter(s => s.semester.toString() === selectedSemester);
-  const displayedCourses = selectedSemester === 'All' ? courses : courses.filter(c => c.semester.toString() === selectedSemester);
-  const currentCourseDetails = courses.find(c => c.course_code === selectedCourseCode);
-
-  const handleInputChange = (id: string, field: string, value: string | number) => {
-    setEditValues(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
-  };
-
-  const showMessage = (msg: string) => {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), 4000);
-  };
-
   // --- STUDENT MANAGEMENT (ADD / UPDATE / DELETE) ---
   const handleSaveStudent = async () => {
     if (!studentForm.name || !studentForm.college_id) return alert("Name and College ID are required.");
-    
+
     if (modalConfig.type === 'add_student') {
       const { error } = await supabase.from('master_students').insert([studentForm]);
       if (!error) {
@@ -188,7 +196,7 @@ export default function AcademicDashboard() {
   // --- COURSE MANAGEMENT (CREATE / UPDATE / DELETE) ---
   const handleSaveCourse = async () => {
     if (!courseForm.course_code || !courseForm.course_name) return alert("Course Code and Name are required.");
-    
+
     if (modalConfig.type === 'edit_course' && modalConfig.targetId) {
       const { error } = await supabase.from('courses').update(courseForm).eq('id', modalConfig.targetId);
       if (!error) {
@@ -217,7 +225,24 @@ export default function AcademicDashboard() {
     }
   };
 
-  // --- INLINE SAVES (Attendance & CT) ---
+  // --- INLINE SAVES (Attendance, Sheet Link & CT) ---
+  const handleSaveSheetUrl = async () => {
+    if (!currentCourseDetails) return;
+    setIsSaving('sheet');
+    const { error } = await supabase
+      .from('courses')
+      .update({ attendance_sheet_url: sheetUrl })
+      .eq('id', currentCourseDetails.id);
+      
+    if (!error) {
+      showMessage('Google Sheet Link saved successfully.');
+      fetchData();
+    } else {
+      alert('Failed to save link.');
+    }
+    setIsSaving(null);
+  };
+
   const handleSaveAttendance = async (studentId: string) => {
     setIsSaving(studentId);
     const newValues = editValues[studentId];
@@ -256,7 +281,7 @@ export default function AcademicDashboard() {
     if (type === 'edit_course') setCourseForm(data);
   };
 
-  // --- CT MARKS: FILE & EMAIL ACTIONS ---
+  // --- CT MARKS & EMAIL ACTIONS ---
   const exportGradingSheet = () => {
     if (!currentCourseDetails) return alert("Select a course first.");
     const maxCTs = currentCourseDetails.credit === 2 ? 3 : 4;
@@ -291,32 +316,13 @@ export default function AcademicDashboard() {
     reader.readAsText(file);
   };
 
-  // --- NEW: ATTENDANCE FILE ACTIONS (Dynamic Calculation) ---
-  const exportAttendanceSheet = () => {
-    let csv = `College ID,RU ID,Name,Total Classes Held,Classes Attended\n`;
-    displayedStudents.forEach(s => csv += `${s.college_id},${s.ru_id || 'N/A'},${s.name},0,0\n`);
-    const link = document.createElement('a');
-    link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
-    link.download = `Batch_${selectedSemester}_Attendance_Template.csv`;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  };
-
-  // 1. You need this state to handle the loading button effect
-  
-
-  // 2. The Mailing Function
   const handleEmailRoster = async (type: 'ct_marks' | 'attendance') => {
-    // Check if a course is selected when trying to send CT marks
-    if (type === 'ct_marks' && !currentCourseDetails) {
+    if (!currentCourseDetails) {
       return alert("Select a course first.");
     }
 
-    // Get the email address (from the course, or ask the user for attendance)
-    const targetEmail = type === 'ct_marks' 
-      ? currentCourseDetails?.teacher_email 
-      : prompt("Enter the teacher's email address for this batch's attendance:");
-    
-    if (!targetEmail) return;
+    const targetEmail = currentCourseDetails.teacher_email;
+    if (!targetEmail) return alert("This course does not have a valid teacher email configured in the Curriculum tab.");
 
     setIsSendingEmail(true);
     showMessage(`Preparing to email template to ${targetEmail}...`);
@@ -324,8 +330,7 @@ export default function AcademicDashboard() {
     let csv = '';
     let subject = '';
 
-    // Generate CT Marks CSV or Attendance CSV based on the button clicked
-    if (type === 'ct_marks' && currentCourseDetails) {
+    if (type === 'ct_marks') {
       const maxCTs = currentCourseDetails.credit === 2 ? 3 : 4;
       csv = `College ID,RU ID,Name,CT1,CT2,CT3${maxCTs === 4 ? ',CT4' : ''}\n`;
       displayedStudents.forEach(s => csv += `${s.college_id},${s.ru_id || 'N/A'},${s.name},0,0,0${maxCTs === 4 ? ',0' : ''}\n`);
@@ -333,10 +338,9 @@ export default function AcademicDashboard() {
     } else {
       csv = `College ID,RU ID,Name,Total Classes Held,Classes Attended\n`;
       displayedStudents.forEach(s => csv += `${s.college_id},${s.ru_id || 'N/A'},${s.name},0,0\n`);
-      subject = `Semester ${selectedSemester} Attendance Template`;
+      subject = `${currentCourseDetails.course_code} Attendance Template`;
     }
 
-    // Send the data to your Next.js backend API route
     try {
       const response = await fetch('/api/academic/send-roster', {
         method: 'POST',
@@ -345,7 +349,8 @@ export default function AcademicDashboard() {
           teacherEmail: targetEmail,
           subject: subject,
           csvData: csv,
-          type: type
+          type: type,
+          sheetUrl: type === 'attendance' ? currentCourseDetails.attendance_sheet_url : null // Optional: Backend can include this in the email body
         })
       });
 
@@ -371,29 +376,27 @@ export default function AcademicDashboard() {
       for (let i = 1; i < rows.length; i++) {
         const cols = rows[i].split(',');
         const student = students.find(s => s.college_id === cols[0]?.trim());
-        
+
         if (student) {
           const totalClasses = parseFloat(cols[3]) || 0;
           const attended = parseFloat(cols[4]) || 0;
           let calculatedPercentage = student.attendance_percentage; // Default fallback
 
-          // Dynamically calculate percentage based on Teacher's CSV data
           if (totalClasses > 0) {
             calculatedPercentage = Math.round((attended / totalClasses) * 100);
-            if (calculatedPercentage > 100) calculatedPercentage = 100; // Cap at 100%
+            if (calculatedPercentage > 100) calculatedPercentage = 100;
           } else if (attended > 0 && totalClasses === 0) {
-            // Failsafe: if the teacher just directly typed the % into the 'attended' column
             calculatedPercentage = attended > 100 ? 100 : attended;
           }
 
           await supabase.from('master_students')
             .update({ attendance_percentage: calculatedPercentage })
             .eq('id', student.id);
-          
+
           uploadCount++;
         }
       }
-      showMessage(`Calculated and imported attendance for ${uploadCount} students.`);
+      showMessage(`Calculated and published attendance for ${uploadCount} students.`);
       fetchData(); if (attendanceFileInputRef.current) attendanceFileInputRef.current.value = ''; 
     };
     reader.readAsText(file);
@@ -413,7 +416,6 @@ export default function AcademicDashboard() {
             <p className="text-sm font-medium text-slate-500 mt-1">{teacherName} | Department of CSE</p>
           </div>
         </div>
-        {/* NEW: Auth Action Buttons */}
         <div className="flex items-center space-x-3">
           <button 
             onClick={() => setIsPasswordModalOpen(true)}
@@ -431,7 +433,7 @@ export default function AcademicDashboard() {
       </header>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
-        
+
         {/* TOOLBAR */}
         <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
           <div>
@@ -442,7 +444,7 @@ export default function AcademicDashboard() {
             </div>
             {message && <p className="text-xs text-emerald-600 mt-2 font-bold bg-emerald-50 inline-block px-2 py-1 rounded">{message}</p>}
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center space-x-2">
               <label className="text-sm font-bold text-slate-600">Batch Filter:</label>
@@ -452,7 +454,8 @@ export default function AcademicDashboard() {
               </select>
             </div>
 
-            {activeTab === 'ct_marks' && selectedSemester !== 'All' && (
+            {/* ASSIGNED COURSE SHOWS IN BOTH CT MARKS & ROSTER */}
+            {(activeTab === 'ct_marks' || activeTab === 'roster') && selectedSemester !== 'All' && (
               <div className="flex items-center space-x-2 border-l border-slate-300 pl-4">
                 <label className="text-sm font-bold text-indigo-700">Assigned Course:</label>
                 <select value={selectedCourseCode} onChange={(e) => setSelectedCourseCode(e.target.value)} className="border border-indigo-200 rounded-lg p-2 text-sm text-indigo-800 bg-indigo-50 font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
@@ -461,7 +464,7 @@ export default function AcademicDashboard() {
                 </select>
               </div>
             )}
-            
+
             {activeTab === 'roster' && (
                <button onClick={() => openModal('add_student')} className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 shadow-sm ml-2">
                  + Add Student
@@ -469,27 +472,55 @@ export default function AcademicDashboard() {
             )}
           </div>
         </div>
-        
+
         {/* TAB 1: ROSTER & ATTENDANCE */}
         {activeTab === 'roster' && (
           <>
-            {/* NEW: ATTENDANCE BULK WORKFLOW */}
-            <div className="bg-blue-50 border-b border-blue-100 p-4 flex flex-wrap justify-between items-center gap-4">
+            {/* UPDATED: DYNAMIC COURSE ATTENDANCE WORKFLOW */}
+            <div className="bg-blue-50 border-b border-blue-100 p-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
               <div>
-                <h3 className="text-sm font-bold text-blue-900">Bulk Attendance Collection</h3>
-                <p className="text-xs text-blue-700 font-medium">Distribute templates to teachers and upload their files to auto-calculate percentages.</p>
+                <h3 className="text-sm font-bold text-blue-900">
+                  {selectedCourseCode ? `Course Attendance: ${currentCourseDetails?.course_code}` : 'Bulk Attendance Collection'}
+                </h3>
+                <p className="text-xs text-blue-700 font-medium">
+                  {selectedCourseCode ? `Managing attendance for ${currentCourseDetails?.teacher_name}. Link a Google Sheet below.` : 'Select an Assigned Course above to manage Google Sheets and email templates.'}
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => handleEmailRoster('attendance')} disabled={isSendingEmail} className={`px-3 py-1.5 ${isSendingEmail ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'} rounded-md text-xs font-bold shadow-sm transition-colors`}>
-                  📧 {isSendingEmail ? 'Sending...' : 'Email Template to Teacher'}
-                </button>
-                <button onClick={exportAttendanceSheet} className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-md text-xs font-bold hover:bg-blue-100 shadow-sm transition-colors">
-                  ⬇️ Download Template
-                </button>
-                <label className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 cursor-pointer shadow-sm transition-colors">
-                  ⬆️ Upload Calculated CSV 
-                  <input type="file" accept=".csv" className="hidden" ref={attendanceFileInputRef} onChange={handleAttendanceUpload} />
-                </label>
+              
+              <div className="flex flex-wrap gap-2 items-center">
+                {selectedCourseCode ? (
+                  <>
+                    <input 
+                      type="text" 
+                      placeholder="Paste Google Sheet URL..." 
+                      value={sheetUrl}
+                      onChange={(e) => setSheetUrl(e.target.value)}
+                      className="px-3 py-1.5 border border-blue-200 rounded-md text-xs w-48 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={handleSaveSheetUrl} className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-md text-xs font-bold hover:bg-blue-100 shadow-sm transition-colors">
+                      {isSaving === 'sheet' ? 'Saving...' : 'Save Link'}
+                    </button>
+                    
+                    {currentCourseDetails?.attendance_sheet_url && (
+                      <a href={currentCourseDetails.attendance_sheet_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-emerald-500 text-white rounded-md text-xs font-bold hover:bg-emerald-600 shadow-sm flex items-center">
+                        📊 View Sheet
+                      </a>
+                    )}
+
+                    <button onClick={() => handleEmailRoster('attendance')} disabled={isSendingEmail} className={`px-3 py-1.5 ${isSendingEmail ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'} rounded-md text-xs font-bold shadow-sm transition-colors`}>
+                      📧 {isSendingEmail ? 'Sending...' : 'Email to Teacher'}
+                    </button>
+
+                    <label className="px-3 py-1.5 bg-slate-800 text-white rounded-md text-xs font-bold hover:bg-slate-900 cursor-pointer shadow-sm transition-colors">
+                      ⬆️ Publish CSV 
+                      <input type="file" accept=".csv" className="hidden" ref={attendanceFileInputRef} onChange={handleAttendanceUpload} />
+                    </label>
+                  </>
+                ) : (
+                  <span className="text-xs font-bold text-blue-800 bg-blue-100 px-3 py-1.5 rounded-md border border-blue-200 shadow-sm">
+                    ⚠️ Select an Assigned Course to unlock workflows
+                  </span>
+                )}
               </div>
             </div>
 
@@ -517,7 +548,7 @@ export default function AcademicDashboard() {
                         <td className="p-3 text-sm font-medium text-slate-700">{student.name}</td>
                         <td className="p-3 text-sm text-slate-500">{student.student_contact || '-'}</td>
                         <td className="p-3 text-sm text-slate-500">{student.guardian_contact || '-'}</td>
-                        
+
                         <td className="p-3 text-sm text-center">
                             <input type="number" min="0" max="100" value={edits.attendance_percentage ?? ''} onChange={(e) => handleInputChange(student.id, 'attendance_percentage', parseInt(e.target.value) || 0)} className={`w-20 border rounded-lg p-1.5 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-blue-500 ${(edits.attendance_percentage || 0) < 75 ? 'border-rose-300 text-rose-600 bg-rose-50' : 'border-slate-300 text-slate-900'}`} />
                         </td>

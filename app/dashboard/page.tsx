@@ -184,7 +184,7 @@ export default function DashboardRoot() {
               <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Form Fill-up Management</li>
               <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Generate Admit Cards & Transcripts</li>
             </ul>
-            <Link href="/dashboard/exam-control" className="block w-full text-center py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors">
+            <Link href="/dashboard/exam" className="block w-full text-center py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors">
               Access Exam Portal
             </Link>
           </div>
@@ -202,7 +202,7 @@ export default function DashboardRoot() {
               <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Course Registration Approval</li>
               <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Mentoring Notes & Alerts</li>
             </ul>
-            <Link href="/dashboard/advisors" className="block w-full text-center py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors">
+            <Link href="/dashboard/advisor" className="block w-full text-center py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors">
               Access Advisory Portal
             </Link>
           </div>
