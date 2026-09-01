@@ -20,19 +20,21 @@ export default function StudentAffairsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('All');
   
-  // NEW: Payment & Billing States
-  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
-  const [paymentCategory, setPaymentCategory] = useState('Monthly Dues');
+  // NEW: 4-in-1 Payment Processing States
+  const [paymentAmounts, setPaymentAmounts] = useState({
+    monthly: '' as number | '',
+    sem: '' as number | '',
+    exam: '' as number | '',
+    fine: '' as number | ''
+  });
   
-  const [massBillAmount, setMassBillAmount] = useState<number | ''>('');
   const [editRates, setEditRates] = useState({ monthly: 0, sem: 0, exam: 0, fine: 0 });
 
   const [modalConfig, setModalConfig] = useState<{
     isOpen: boolean;
-    type: 'payment' | 'rates' | 'mass_bill' | null;
+    type: 'payment' | 'rates' | null;
     student: any | null;
-    billType: string | null;
-  }>({ isOpen: false, type: null, student: null, billType: null });
+  }>({ isOpen: false, type: null, student: null });
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -62,11 +64,18 @@ export default function StudentAffairsPage() {
         name: s.name,
         semester: s.semester,
         attendance_percentage: s.attendance_percentage || 0,
-        monthly_due: s.agreed_monthly_fee || 0,
-        sem_due: s.agreed_semester_fee || 0,
-        exam_due: s.agreed_ru_exam_fee || 0,
+        
+        // Base Contract Rates (Set via Edit Dues)
+        base_monthly: s.agreed_monthly_fee || 0,
+        base_sem: s.agreed_semester_fee || 0,
+        base_exam: s.agreed_ru_exam_fee || 0,
+        
+        // Running Balances (What they actually owe right now)
+        monthly_due: s.monthly_due || 0,
+        sem_due: s.semester_due || 0,
+        exam_due: s.exam_due || 0,
         fine_due: s.attendance_fine || 0,
-        fines_collected: s.total_fines_paid || 0
+        fines_collected: s.total_fines_paid || 0 
       }));
       setStudents(formattedData);
     }
@@ -132,40 +141,41 @@ export default function StudentAffairsPage() {
   };
 
   const handleReceivePayment = async () => {
-    if (!paymentAmount || Number(paymentAmount) <= 0) {
-      return alert("Please enter a valid payment amount.");
+    const mPay = Number(paymentAmounts.monthly) || 0;
+    const sPay = Number(paymentAmounts.sem) || 0;
+    const ePay = Number(paymentAmounts.exam) || 0;
+    const fPay = Number(paymentAmounts.fine) || 0;
+
+    if (mPay === 0 && sPay === 0 && ePay === 0 && fPay === 0) {
+      return alert("Please enter at least one valid payment amount.");
     }
 
     const s = modalConfig.student;
-    const amount = Number(paymentAmount);
     let updates: any = {};
 
-    if (paymentCategory === 'Attendance Fine') {
-      const newDue = Math.max(0, s.fine_due - amount);
-      const actuallyPaid = s.fine_due - newDue;
-      updates = {
-        attendance_fine: newDue,
-        total_fines_paid: s.fines_collected + actuallyPaid
-      };
-    } else if (paymentCategory === 'Monthly Dues') {
-      updates = { agreed_monthly_fee: Math.max(0, s.monthly_due - amount) };
-    } else if (paymentCategory === 'Semester Dues') {
-      updates = { agreed_semester_fee: Math.max(0, s.sem_due - amount) };
-    } else if (paymentCategory === 'RU Exam Dues') {
-      updates = { agreed_ru_exam_fee: Math.max(0, s.exam_due - amount) };
+    // Calculate deductions for each category simultaneously
+    if (mPay > 0) updates.monthly_due = Math.max(0, s.monthly_due - mPay);
+    if (sPay > 0) updates.semester_due = Math.max(0, s.sem_due - sPay);
+    if (ePay > 0) updates.exam_due = Math.max(0, s.exam_due - ePay);
+    
+    if (fPay > 0) {
+      const newFineDue = Math.max(0, s.fine_due - fPay);
+      const actuallyPaid = s.fine_due - newFineDue; 
+      updates.attendance_fine = newFineDue;
+      updates.total_fines_paid = s.fines_collected + actuallyPaid;
     }
 
     const { error } = await supabase
       .from('master_students')
       .update(updates)
       .eq('id', s.id);
-
-    if (!error) {
-      alert(`Successfully processed ৳${amount} for ${paymentCategory}.`);
-      closeModal();
-      fetchStudents();
-    } else {
-      alert(`Error processing payment: ${error.message}`);
+    
+    if (!error) { 
+      alert(`Successfully processed payment(s).`); 
+      closeModal(); 
+      fetchStudents(); 
+    } else { 
+      alert(`Error processing payment: ${error.message}`); 
     }
   };
 
@@ -182,7 +192,7 @@ export default function StudentAffairsPage() {
       .eq('id', s.id);
 
     if (!error) {
-      alert(`Dues successfully updated for ${s.name}.`);
+      alert(`Contract Dues successfully set for ${s.name}.`);
       closeModal();
       fetchStudents();
     } else {
@@ -190,42 +200,66 @@ export default function StudentAffairsPage() {
     }
   };
 
-  const handleExecuteMassBill = async () => {
-    if (!massBillAmount || Number(massBillAmount) <= 0) {
-      return alert("Please enter a valid billing amount.");
-    }
+  // --- 1-CLICK MASS BILLING FUNCTION ---
+  const handleExecuteMassBill = async (billType: 'Monthly' | 'Semester' | 'RU Exam') => {
+    if (filteredStudents.length === 0) return alert("No students found in current filter.");
 
-    if (!window.confirm(`Are you sure you want to add ৳${massBillAmount} to ${filteredStudents.length} students?`)) {
+    const multiplier = billType === 'Monthly' ? 6 : 1;
+
+    if (!window.confirm(`Are you sure you want to bill ${billType} to all ${filteredStudents.length} filtered students?\n\nThis multiplies their base rate by ${multiplier} and adds it to their running total.`)) {
       return;
     }
 
     setLoading(true);
-    const amount = Number(massBillAmount);
+    let successCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
 
-    // Loop through the filtered students and add the amount to their specific category
-    await Promise.all(filteredStudents.map(async (student) => {
+    for (const student of filteredStudents) {
       let fieldToUpdate = '';
+      let amountToAdd = 0;
       let currentAmount = 0;
 
-      if (modalConfig.billType === 'Monthly') {
-        fieldToUpdate = 'agreed_monthly_fee';
+      if (billType === 'Monthly') {
+        fieldToUpdate = 'monthly_due';
+        amountToAdd = student.base_monthly * 6; // Adds 6 months!
         currentAmount = student.monthly_due;
-      } else if (modalConfig.billType === 'Semester') {
-        fieldToUpdate = 'agreed_semester_fee';
+      } else if (billType === 'Semester') {
+        fieldToUpdate = 'semester_due';
+        amountToAdd = student.base_sem * 1; // Adds 1 semester!
         currentAmount = student.sem_due;
-      } else if (modalConfig.billType === 'RU Exam') {
-        fieldToUpdate = 'agreed_ru_exam_fee';
+      } else if (billType === 'RU Exam') {
+        fieldToUpdate = 'exam_due';
+        amountToAdd = student.base_exam * 1; // Adds 1 RU Exam!
         currentAmount = student.exam_due;
       }
 
-      return supabase
-        .from('master_students')
-        .update({ [fieldToUpdate]: currentAmount + amount })
-        .eq('id', student.id);
-    }));
+      // Only hit the database if there is actually money to add
+      if (amountToAdd > 0) {
+        const { error } = await supabase
+          .from('master_students')
+          .update({ [fieldToUpdate]: currentAmount + amountToAdd })
+          .eq('id', student.id);
+        
+        if (error) {
+          errorCount++;
+        } else {
+          successCount++;
+        }
+      } else {
+        skippedCount++;
+      }
+    }
 
-    alert(`Mass billing of ৳${amount} successfully applied to the batch!`);
-    closeModal();
+    // Explicit error/success reporting
+    if (errorCount > 0) {
+      alert(`Database Error! Failed to bill ${errorCount} students. Did you run the SQL command to add the columns?`);
+    } else if (skippedCount === filteredStudents.length) {
+      alert(`⚠️ NO STUDENTS BILLED.\n\nAll ${skippedCount} students were skipped because their base rate is 0.\nYou MUST use the 'Edit Dues' button to set their contract rates first!`);
+    } else {
+      alert(`Mass billing successfully applied to ${successCount} students!\n(${skippedCount} skipped because their base rate was 0).`);
+    }
+
     fetchStudents();
   };
 
@@ -240,7 +274,6 @@ export default function StudentAffairsPage() {
     });
   }, [students, searchQuery, semesterFilter]);
 
-  // BUGFIX: Now calculating metrics based on filteredStudents, not the whole database!
   const metrics = useMemo(() => {
     let totalMonthly = 0;
     let totalSemExam = 0;
@@ -268,25 +301,24 @@ export default function StudentAffairsPage() {
   }, [filteredStudents]);
 
   // --- MODAL HANDLERS ---
-  const openModal = (type: 'payment' | 'rates' | 'mass_bill', student: any = null, billType: string | null = null) => {
-    setPaymentAmount(''); 
-    setPaymentCategory('Monthly Dues'); 
-    setMassBillAmount('');
-
-    // Pre-fill the rates if opening the Rates modal
+  const openModal = (type: 'payment' | 'rates', student: any = null) => {
+    // Reset all 4 payment boxes
+    setPaymentAmounts({ monthly: '', sem: '', exam: '', fine: '' }); 
+    
+    // Pre-fill the base rates if opening the Edit Dues modal
     if (type === 'rates' && student) {
       setEditRates({
-        monthly: student.monthly_due,
-        sem: student.sem_due,
-        exam: student.exam_due,
-        fine: student.fine_due
+        monthly: student.base_monthly,
+        sem: student.base_sem,
+        exam: student.base_exam,
+        fine: student.fine_due // Fine is a running balance, so we keep it here for manual override
       });
     }
 
-    setModalConfig({ isOpen: true, type, student, billType });
+    setModalConfig({ isOpen: true, type, student });
   };
 
-  const closeModal = () => setModalConfig({ isOpen: false, type: null, student: null, billType: null });
+  const closeModal = () => setModalConfig({ isOpen: false, type: null, student: null });
 
   return (
     <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
@@ -311,10 +343,16 @@ export default function StudentAffairsPage() {
         </div>
         
         <div className="flex items-center space-x-3">
-          <button onClick={() => setIsPasswordModalOpen(true)} className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold shadow-sm transition-colors">
+          <button 
+            onClick={() => setIsPasswordModalOpen(true)} 
+            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold shadow-sm transition-colors"
+          >
             Change Password
           </button>
-          <button onClick={handleLogout} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors">
+          <button 
+            onClick={handleLogout} 
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
+          >
             Logout
           </button>
         </div>
@@ -353,12 +391,31 @@ export default function StudentAffairsPage() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-slate-600 mr-2">Mass Billing:</span>
-            <button onClick={() => openModal('mass_bill', null, 'Monthly')} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow-sm transition-colors">+ Monthly</button>
-            <button onClick={() => openModal('mass_bill', null, 'Semester')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-sm transition-colors">+ Semester</button>
-            <button onClick={() => openModal('mass_bill', null, 'RU Exam')} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded shadow-sm transition-colors">+ RU Exam</button>
+            <span className="text-sm font-semibold text-slate-600 mr-2">1-Click Mass Billing:</span>
             
-            <button onClick={handleApplyAttendanceFines} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded shadow-sm transition-colors ml-4 flex items-center">
+            <button 
+              onClick={() => handleExecuteMassBill('Monthly')} 
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
+            >
+              + Monthly (x6)
+            </button>
+            <button 
+              onClick={() => handleExecuteMassBill('Semester')} 
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
+            >
+              + Semester (x1)
+            </button>
+            <button 
+              onClick={() => handleExecuteMassBill('RU Exam')} 
+              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
+            >
+              + RU Exam (x1)
+            </button>
+            
+            <button 
+              onClick={handleApplyAttendanceFines} 
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded shadow-sm transition-colors ml-4 flex items-center"
+            >
               ⚠️ Auto-Fine (&lt;60% Att.)
             </button>
           </div>
@@ -418,18 +475,39 @@ export default function StudentAffairsPage() {
                         </span>
                       </td>
 
-                      <td className={`px-6 py-4 font-medium ${s.monthly_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.monthly_due > 0 ? s.monthly_due : '-'}</td>
-                      <td className={`px-6 py-4 font-medium ${s.sem_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.sem_due > 0 ? s.sem_due : '-'}</td>
-                      <td className={`px-6 py-4 font-medium ${s.exam_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.exam_due > 0 ? s.exam_due : '-'}</td>
-                      <td className={`px-6 py-4 font-bold bg-rose-50/30 ${s.fine_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.fine_due > 0 ? s.fine_due : '-'}</td>
+                      <td className="px-6 py-4">
+                        <div className={`font-bold ${s.monthly_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.monthly_due > 0 ? s.monthly_due : '-'}</div>
+                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">Rate: {s.base_monthly}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`font-bold ${s.sem_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.sem_due > 0 ? s.sem_due : '-'}</div>
+                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">Rate: {s.base_sem}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`font-bold ${s.exam_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.exam_due > 0 ? s.exam_due : '-'}</div>
+                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">Rate: {s.base_exam}</div>
+                      </td>
+                      <td className={`px-6 py-4 font-bold bg-rose-50/30 ${s.fine_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                        {s.fine_due > 0 ? s.fine_due : '-'}
+                      </td>
                       
                       <td className="px-6 py-4 font-black bg-slate-50 text-slate-800">
                         {isCleared ? <span className="text-emerald-600 flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span>Cleared</span> : <span>৳{totalDue}</span>}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex justify-center space-x-2">
-                          <button onClick={() => openModal('payment', s)} className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded text-xs font-bold transition-colors">Payment</button>
-                          <button onClick={() => openModal('rates', s)} className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 rounded text-xs font-bold transition-colors">Edit Dues</button>
+                          <button 
+                            onClick={() => openModal('payment', s)} 
+                            className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded text-xs font-bold transition-colors"
+                          >
+                            Payment
+                          </button>
+                          <button 
+                            onClick={() => openModal('rates', s)} 
+                            className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 rounded text-xs font-bold transition-colors"
+                          >
+                            Edit Dues
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -450,47 +528,69 @@ export default function StudentAffairsPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <h3 className="font-bold text-slate-800 text-lg">
-                {modalConfig.type === 'payment' && 'Receive Payment'}
-                {modalConfig.type === 'rates' && 'Update Student Dues'}
-                {modalConfig.type === 'mass_bill' && `Mass Billing: ${modalConfig.billType}`}
+                {modalConfig.type === 'payment' ? 'Receive Payments' : 'Set Contract Dues'}
               </h3>
               <button onClick={closeModal} className="text-slate-400 hover:text-slate-700 font-bold text-xl">×</button>
             </div>
 
             <div className="p-6">
               
-              {/* PAYMENT CONTEXT */}
+              {/* PAYMENT CONTEXT - NOW 4 GRIDS */}
               {modalConfig.type === 'payment' && (
                 <div className="space-y-4">
                   <div className="bg-blue-50 p-3 rounded-lg text-sm mb-4 border border-blue-100">
                     Recording payment for <span className="font-bold text-blue-900">{modalConfig.student?.name}</span>. <br/>
                     Current total due: <span className="font-bold text-rose-600">৳{modalConfig.student?.monthly_due + modalConfig.student?.sem_due + modalConfig.student?.exam_due + modalConfig.student?.fine_due}</span>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Amount Received (Tk)</label>
-                    <input 
-                      type="number" 
-                      value={paymentAmount}
-                      onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
-                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
-                      placeholder="0" 
-                    />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Monthly (Due: ৳{modalConfig.student?.monthly_due})</label>
+                      <input 
+                        type="number" 
+                        value={paymentAmounts.monthly} 
+                        onChange={(e) => setPaymentAmounts({...paymentAmounts, monthly: e.target.value ? Number(e.target.value) : ''})} 
+                        className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
+                        placeholder="0" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Semester (Due: ৳{modalConfig.student?.sem_due})</label>
+                      <input 
+                        type="number" 
+                        value={paymentAmounts.sem} 
+                        onChange={(e) => setPaymentAmounts({...paymentAmounts, sem: e.target.value ? Number(e.target.value) : ''})} 
+                        className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
+                        placeholder="0" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">RU Exam (Due: ৳{modalConfig.student?.exam_due})</label>
+                      <input 
+                        type="number" 
+                        value={paymentAmounts.exam} 
+                        onChange={(e) => setPaymentAmounts({...paymentAmounts, exam: e.target.value ? Number(e.target.value) : ''})} 
+                        className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
+                        placeholder="0" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-rose-600 mb-1">Fine (Due: ৳{modalConfig.student?.fine_due})</label>
+                      <input 
+                        type="number" 
+                        value={paymentAmounts.fine} 
+                        onChange={(e) => setPaymentAmounts({...paymentAmounts, fine: e.target.value ? Number(e.target.value) : ''})} 
+                        className="w-full border-rose-300 bg-rose-50 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-rose-500" 
+                        placeholder="0" 
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Apply to Category</label>
-                    <select 
-                      value={paymentCategory}
-                      onChange={(e) => setPaymentCategory(e.target.value)}
-                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                    >
-                      <option value="Monthly Dues">Monthly Dues (Due: ৳{modalConfig.student?.monthly_due})</option>
-                      <option value="Semester Dues">Semester Dues (Due: ৳{modalConfig.student?.sem_due})</option>
-                      <option value="RU Exam Dues">RU Exam Dues (Due: ৳{modalConfig.student?.exam_due})</option>
-                      <option value="Attendance Fine">Attendance Fine (Due: ৳{modalConfig.student?.fine_due})</option>
-                    </select>
-                  </div>
-                  <button onClick={handleReceivePayment} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors">
-                    Confirm & Save Receipt
+
+                  <button 
+                    onClick={handleReceivePayment} 
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors"
+                  >
+                    Confirm & Save Receipts
                   </button>
                 </div>
               )}
@@ -498,47 +598,51 @@ export default function StudentAffairsPage() {
               {/* RATES/DUES CONTEXT */}
               {modalConfig.type === 'rates' && (
                 <div className="space-y-4">
-                  <div className="text-sm text-slate-600 mb-4">Set baseline structural fees and fines for <span className="font-bold">{modalConfig.student?.name}</span>.</div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Agreed Monthly Fee</label>
-                    <input type="number" value={editRates.monthly} onChange={(e) => setEditRates({...editRates, monthly: Number(e.target.value)})} className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <div className="text-sm text-slate-600 mb-4">
+                    Set permanent contract rates for <span className="font-bold">{modalConfig.student?.name}</span>. Mass billing will use these rates.
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Agreed Semester Fee</label>
-                    <input type="number" value={editRates.sem} onChange={(e) => setEditRates({...editRates, sem: Number(e.target.value)})} className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Agreed RU Exam Fee</label>
-                    <input type="number" value={editRates.exam} onChange={(e) => setEditRates({...editRates, exam: Number(e.target.value)})} className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-rose-600 mb-1">Attendance Fine</label>
-                    <input type="number" value={editRates.fine} onChange={(e) => setEditRates({...editRates, fine: Number(e.target.value)})} className="w-full border-rose-300 bg-rose-50 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-rose-500" />
-                  </div>
-                  <button onClick={handleUpdateRates} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors">
-                    Save Updated Dues
-                  </button>
-                </div>
-              )}
-
-              {/* MASS BILLING CONTEXT */}
-              {modalConfig.type === 'mass_bill' && (
-                <div className="space-y-4">
-                  <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-lg text-sm mb-4">
-                    <strong>Warning:</strong> You are about to apply a {modalConfig.billType} charge to <strong>ALL {filteredStudents.length} students</strong> currently in the filtered view.
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Charge Amount per Student (Tk)</label>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Monthly Contract Rate (1 Month)</label>
                     <input 
                       type="number" 
-                      value={massBillAmount}
-                      onChange={(e) => setMassBillAmount(e.target.value ? Number(e.target.value) : '')}
-                      placeholder="e.g. 2500" 
-                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-rose-500" 
+                      value={editRates.monthly} 
+                      onChange={(e) => setEditRates({...editRates, monthly: Number(e.target.value)})} 
+                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
                     />
                   </div>
-                  <button onClick={handleExecuteMassBill} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors shadow-lg shadow-rose-200">
-                    Execute Mass Billing
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Semester Contract Rate</label>
+                    <input 
+                      type="number" 
+                      value={editRates.sem} 
+                      onChange={(e) => setEditRates({...editRates, sem: Number(e.target.value)})} 
+                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">RU Exam Contract Rate</label>
+                    <input 
+                      type="number" 
+                      value={editRates.exam} 
+                      onChange={(e) => setEditRates({...editRates, exam: Number(e.target.value)})} 
+                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-rose-600 mb-1">Running Fine Balance (Manual Override)</label>
+                    <input 
+                      type="number" 
+                      value={editRates.fine} 
+                      onChange={(e) => setEditRates({...editRates, fine: Number(e.target.value)})} 
+                      className="w-full border-rose-300 bg-rose-50 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-rose-500" 
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={handleUpdateRates} 
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors"
+                  >
+                    Save Contract Dues
                   </button>
                 </div>
               )}
