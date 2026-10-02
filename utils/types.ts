@@ -27,6 +27,11 @@ export type Student = {
   // Academic standing — maintained by the database from published results (migration 007)
   cgpa?: number | null;
   credits_earned?: number | null;
+  // Printed on RU roll sheets (migration 010)
+  name_bn?: string | null;
+  mother_name?: string | null;
+  father_name?: string | null;
+  session?: string | null; // blank = worked out from the RU ID
 };
 
 export type Course = {
