@@ -24,6 +24,9 @@ export type Student = {
   exam_due: number | null;
   attendance_fine: number | null;
   total_fines_paid: number | null;
+  // Academic standing — maintained by the database from published results (migration 007)
+  cgpa?: number | null;
+  credits_earned?: number | null;
 };
 
 export type Course = {
@@ -87,6 +90,7 @@ export type CourseResult = {
   credit: number;
   grade: string;
   grade_point: number;
+  exam_key: string; // which exam this attempt came from; '' for manual/template entries
   published_at: string;
 };
 
@@ -100,4 +104,17 @@ export type SemesterResult = {
   ygpa: number | null;
   result_status: string | null;
   merit_position: number | null;
+  exam_key?: string;
+  published_at?: string;
 };
+
+// Starting point for semesters published before the system existed (migration 007).
+export type AcademicOpening = {
+  student_id: string;
+  through_semester: number;
+  credits: number;
+  cgpa: number;
+  note: string | null;
+};
+
+export const DEGREE_CREDITS = 160;

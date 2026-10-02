@@ -1,15 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Ban, CheckCircle2, Clock, FileBadge, GraduationCap, ScanSearch, Search, Users } from 'lucide-react';
+import { Ban, CheckCircle2, Clock, FileBadge, GraduationCap, History, ScanSearch, Search, Users } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
-import { SEMESTERS, type Student } from '../../../utils/types';
+import { DEGREE_CREDITS, SEMESTERS, type Student } from '../../../utils/types';
 import { Badge, Button, Card, EmptyState, PageHeader, StatCard, inputClass, table } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
 import PublishResultsModal from './_components/PublishResultsModal';
+import StartingCgpaModal from './_components/StartingCgpaModal';
 
-type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage'>;
+type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage' | 'cgpa' | 'credits_earned'>;
 
 const STATUS_TONE = { Done: 'emerald', Blocked: 'rose', Pending: 'amber' } as const;
 
@@ -22,11 +23,12 @@ export default function ExaminationDashboard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [isStartingOpen, setIsStartingOpen] = useState(false);
 
   const fetchExamData = useCallback(() =>
     supabase
       .from('master_students')
-      .select('id, college_id, ru_id, name, semester, exam_reg_status, backlogs, internal_marks_status, attendance_percentage')
+      .select('id, college_id, ru_id, name, semester, exam_reg_status, backlogs, internal_marks_status, attendance_percentage, cgpa, credits_earned')
       .order('college_id', { ascending: true })
       .then(({ data, error }) => {
         if (!error && data) setStudents(data as ExamStudent[]);
@@ -82,6 +84,7 @@ export default function ExaminationDashboard() {
         description="Registration status, eligibility and semester results."
         actions={<>
           <Button variant="secondary" icon={ScanSearch} loading={isChecking} onClick={handleCheckEligibility}>Auto-check eligibility</Button>
+          <Button variant="secondary" icon={History} onClick={() => setIsStartingOpen(true)}>Earlier results</Button>
           <Button icon={GraduationCap} onClick={() => setIsPublishOpen(true)}>Publish Results</Button>
         </>}
       />
@@ -120,6 +123,8 @@ export default function ExaminationDashboard() {
                 <tr>
                   <th className={table.th}>Student</th>
                   <th className={`${table.th} text-center`}>Attendance</th>
+                  <th className={`${table.th} text-center`}>CGPA</th>
+                  <th className={`${table.th} text-center`}>Credits</th>
                   <th className={`${table.th} text-center`}>Backlogs</th>
                   <th className={table.th}>Internal marks</th>
                   <th className={table.th}>Registration</th>
@@ -137,6 +142,8 @@ export default function ExaminationDashboard() {
                         <p className="text-xs text-slate-500">{student.college_id} · RU {student.ru_id || '—'} · Sem {student.semester}</p>
                       </td>
                       <td className={`${table.td} text-center`}><Badge tone={attendance < MIN_ATTENDANCE_PERCENT ? 'rose' : 'emerald'}>{attendance}%</Badge></td>
+                      <td className={`${table.td} text-center font-semibold tabular-nums text-slate-900`}>{Number(student.cgpa) > 0 ? Number(student.cgpa).toFixed(2) : '—'}</td>
+                      <td className={`${table.td} text-center tabular-nums text-slate-600`}>{Number(student.credits_earned) > 0 ? `${Number(student.credits_earned)}/${DEGREE_CREDITS}` : '—'}</td>
                       <td className={`${table.td} text-center tabular-nums ${(student.backlogs || 0) > 0 ? 'font-semibold text-rose-600' : 'text-slate-400'}`}>{student.backlogs || 0}</td>
                       <td className={table.td}><Badge tone={student.internal_marks_status === 'Submitted' ? 'emerald' : 'slate'}>{student.internal_marks_status || 'Pending'}</Badge></td>
                       <td className={table.td}><Badge tone={STATUS_TONE[status] ?? 'amber'} dot>{status === 'Done' ? 'Verified' : status}</Badge></td>
@@ -161,6 +168,8 @@ export default function ExaminationDashboard() {
           </div>
         )}
       </Card>
+
+      {isStartingOpen && <StartingCgpaModal students={students} onClose={() => setIsStartingOpen(false)} onSaved={fetchExamData} />}
 
       {isPublishOpen && (
         <PublishResultsModal
