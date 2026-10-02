@@ -34,3 +34,17 @@ Do this when finance staff aren't entering payments (takes ~5 minutes).
 2. Right away, deploy the `finance-ledger` branch (merge into `main` and push).
    Between steps 1 and 2 the old finance page can still show balances, but saving payments fails.
 3. Test as finance: record a small payment, open **History**, try billing twice (second time bills nobody).
+
+---
+
+# Course results (004)
+
+Safe to run any time — it only adds a new table; nothing existing changes.
+
+1. Supabase → SQL Editor → run `migrations/004_course_results.sql` (choose "Run without RLS" if warned —
+   the new table enables RLS itself).
+2. Deploy the code.
+3. Exam office: Exam dashboard → **📊 Publish Results** → choose semester → Download Template →
+   fill the Grade column (A+, A, A-, B+, B, B-, C+, C, D, F) → upload → check the preview → Publish.
+
+CGPA and backlogs on each student update automatically from the latest attempt of every course.
