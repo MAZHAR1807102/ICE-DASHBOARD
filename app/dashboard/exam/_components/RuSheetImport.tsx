@@ -19,7 +19,9 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
   const [fileName, setFileName] = useState('');
   const [sheet, setSheet] = useState<ParsedSheet | null>(null);
   const [semester, setSemester] = useState(1);
-  const [credits, setCredits] = useState<Record<string, string>>({});
+  const [credits, setCredits] = useState<Record<string, string>>({}); // keyed by the column as read from the file
+  const [codes, setCodes] = useState<Record<string, string>>({}); // corrected course code per column
+  const [included, setIncluded] = useState<Record<string, boolean>>({});
   const [suggested, setSuggested] = useState<Record<string, number>>({});
   const [solvedCheck, setSolvedCheck] = useState<{ reproduced: number; checked: number } | null>(null);
   const [catalog, setCatalog] = useState<Course[]>([]);
@@ -54,6 +56,8 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
         const known = catalog.find((c) => c.course_code.toUpperCase() === code);
         return [code, String(inferred[code] ?? known?.credit ?? '')];
       })));
+      setCodes(Object.fromEntries(parsed.courses.map((c) => [c, c])));
+      setIncluded(Object.fromEntries(parsed.courses.map((c) => [c, true])));
       setSemester(parsed.semesterGuess ?? 1);
       setSheet(parsed);
       setFileName(file.name);
@@ -66,38 +70,58 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
 
   const matched = sheet ? sheet.students.filter((s) => byRoll.has(s.roll)) : [];
   const unmatched = sheet ? sheet.students.filter((s) => !byRoll.has(s.roll)) : [];
-  const absent = matched.filter((s) => sheet!.courses.every((c) => !s.grades[c]));
-  const gradeCount = matched.reduce((n, s) => n + sheet!.courses.filter((c) => s.grades[c]).length, 0);
-  const missingCredit = sheet ? sheet.courses.filter((c) => !(Number(credits[c]) > 0)) : [];
+
+  // Columns as read from the file; each can be renamed (if the code was misread) or left out.
+  const finalCode = (col: string) => (codes[col] ?? col).toUpperCase().replace(/\s+/g, '');
+  const columns = sheet ? sheet.courses.filter((c) => included[c] !== false) : [];
+  const codeCounts = columns.reduce<Record<string, number>>((m, c) => ((m[finalCode(c)] = (m[finalCode(c)] ?? 0) + 1), m), {});
+  const duplicateCodes = Object.keys(codeCounts).filter((c) => codeCounts[c] > 1);
+  const emptyCodes = columns.filter((c) => !finalCode(c));
+  const oddCodes = columns.filter((c) => finalCode(c) && !/^[A-Z]{2,5}\d{4}$/.test(finalCode(c)));
+  const catalogFor = (col: string) => catalog.find((c) => c.course_code.toUpperCase().replace(/\s+/g, '') === finalCode(col));
+
+  const absent = matched.filter((s) => columns.every((c) => !s.grades[c]));
+  const gradeCount = matched.reduce((n, s) => n + columns.filter((c) => s.grades[c]).length, 0);
+  const missingCredit = columns.filter((c) => !(Number(credits[c]) > 0));
+  const blocked = matched.length === 0 || columns.length === 0 || missingCredit.length > 0 || duplicateCodes.length > 0 || emptyCodes.length > 0;
 
   // Students whose credits (excluding F) don't add up to the EC printed on the sheet.
-  const ecMismatches = sheet && missingCredit.length === 0
+  const ecMismatches = sheet && missingCredit.length === 0 && columns.length === sheet.courses.length
     ? matched.filter((s) => {
-        if (s.ec === undefined || sheet.courses.some((c) => !s.grades[c])) return false;
-        const earned = sheet.courses.filter((c) => s.grades[c] !== 'F').reduce((sum, c) => sum + Number(credits[c]), 0);
+        if (s.ec === undefined || columns.some((c) => !s.grades[c])) return false;
+        const earned = columns.filter((c) => s.grades[c] !== 'F').reduce((sum, c) => sum + Number(credits[c]), 0);
         return Math.abs(earned - s.ec) > 0.01;
       })
     : [];
 
+  // What each column holds, to help spot a misread header: "24 grades · mostly B, A-, C+".
+  const columnSummary = (col: string) => {
+    const grades = matched.map((s) => s.grades[col]).filter(Boolean);
+    const top = Object.entries(grades.reduce<Record<string, number>>((m, g) => ((m[g] = (m[g] ?? 0) + 1), m), {}))
+      .sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => g);
+    return grades.length ? `${grades.length} grade${grades.length === 1 ? '' : 's'} · mostly ${top.join(', ')}` : 'no grades for our students';
+  };
+
   const handlePublish = async () => {
-    if (!sheet || matched.length === 0) return;
+    if (!sheet || blocked) return;
+    const renamed = columns.filter((c) => finalCode(c) !== c);
     const ok = await confirm({
       title: `Publish semester ${semester} results for ${matched.length} students?`,
-      body: `${gradeCount} course grades${sheet.hasOfficialFigures ? ' plus the official EC, GPA, YGPA, result and merit' : ''}. Students see them immediately and their CGPA is recalculated.\n\nRe-uploading this same exam replaces it. A different exam (retake or improvement) is kept as another attempt — the best grade counts.`,
+      body: `${renamed.length ? `Corrected codes: ${renamed.map((c) => `${c} → ${finalCode(c)}`).join(', ')}.\n` : ''}${gradeCount} course grades${sheet.hasOfficialFigures ? ' plus the official EC, GPA, YGPA, result and merit' : ''}. Students see them immediately and their CGPA is recalculated.\n\nRe-uploading this same exam replaces it. A different exam (retake or improvement) is kept as another attempt — the best grade counts.`,
       confirmLabel: 'Publish results',
     });
     if (!ok) return;
 
     setIsPublishing(true);
     const key = examKey(sheet.title);
-    const courseRows = matched.flatMap((s) => sheet.courses.filter((c) => s.grades[c]).map((code) => ({
+    const courseRows = matched.flatMap((s) => columns.filter((c) => s.grades[c]).map((col) => ({
       student_id: byRoll.get(s.roll)!.id,
       semester,
       exam_key: key,
-      course_code: code,
-      course_name: catalog.find((c) => c.course_code.toUpperCase() === code)?.course_name ?? null,
-      credit: Number(credits[code]),
-      grade: s.grades[code],
+      course_code: finalCode(col),
+      course_name: catalogFor(col)?.course_name ?? null,
+      credit: Number(credits[col]),
+      grade: s.grades[col],
     })));
     const summaryRows = !sheet.hasOfficialFigures ? [] : matched.map((s) => ({
         student_id: byRoll.get(s.roll)!.id,
@@ -168,30 +192,55 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
       </div>
 
       <div>
-        <p className="mb-2 text-sm font-semibold text-slate-900">Course credits</p>
+        <p className="text-sm font-semibold text-slate-900">Courses on this sheet</p>
+        <p className="mb-2 text-xs text-slate-500">Check each course code and credit. Fix a code the file was read wrong for, or switch off a column that isn&apos;t a course.</p>
         <div className={`${table.wrap} rounded-xl ring-1 ring-slate-200`}>
           <table className={table.table}>
             <thead className={table.head}>
-              <tr><th className={table.th}>Course</th><th className={`${table.th} w-28`}>Credit</th></tr>
+              <tr>
+                <th className={`${table.th} w-12`}><span className="sr-only">Include</span></th>
+                <th className={table.th}>Course code</th>
+                <th className={table.th}>What&apos;s in this column</th>
+                <th className={`${table.th} w-24`}>Credit</th>
+              </tr>
             </thead>
             <tbody className={table.body}>
-              {sheet.courses.map((code) => {
-                const known = catalog.find((c) => c.course_code.toUpperCase() === code);
-                const guess = suggested[code];
+              {sheet.courses.map((col) => {
+                const on = included[col] !== false;
+                const code = finalCode(col);
+                const known = catalogFor(col);
+                const guess = suggested[col];
+                const isDuplicate = on && duplicateCodes.includes(code);
+                const isOdd = on && oddCodes.includes(col);
                 return (
-                  <tr key={code}>
-                    <td className="px-4 py-2">
-                      <p className="font-medium text-slate-900">{code}</p>
-                      <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                        {known?.course_name ?? 'Not in the course list'}
-                        {guess !== undefined && <Badge tone="violet"><Sparkles className="size-3" aria-hidden />{guess} {solvedCheck ? 'from the GPAs' : 'from EC'}</Badge>}
-                      </p>
-                    </td>
-                    <td className="px-4 py-2">
+                  <tr key={col} className={on ? '' : 'bg-slate-50 opacity-60'}>
+                    <td className="px-4 py-2 align-top">
                       <input
-                        type="number" step="0.25" min="0" value={credits[code] ?? ''} aria-label={`Credit for ${code}`}
-                        onChange={(e) => setCredits({ ...credits, [code]: e.target.value })}
-                        className={cx(inputClass, 'h-8 text-center', !(Number(credits[code]) > 0) && 'ring-rose-400')}
+                        type="checkbox" checked={on} aria-label={`Include ${col}`}
+                        onChange={(e) => setIncluded({ ...included, [col]: e.target.checked })}
+                        className="mt-2 size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    </td>
+                    <td className="px-4 py-2 align-top">
+                      <input
+                        type="text" value={codes[col] ?? col} disabled={!on} aria-label={`Course code for column ${col}`}
+                        onChange={(e) => setCodes({ ...codes, [col]: e.target.value.toUpperCase() })}
+                        className={cx(inputClass, 'h-8 w-32 font-mono font-semibold uppercase', (isDuplicate || (on && !code)) && 'ring-rose-400', isOdd && 'ring-amber-400')}
+                      />
+                      {code !== col && on && <p className="mt-1 text-[11px] text-indigo-600">Read as {col}</p>}
+                      {isDuplicate && <p className="mt-1 text-[11px] text-rose-600">Used by another column too</p>}
+                      {isOdd && !isDuplicate && <p className="mt-1 text-[11px] text-amber-700">Unusual code — double-check</p>}
+                    </td>
+                    <td className="px-4 py-2 align-top">
+                      <p className="text-sm text-slate-800">{known?.course_name ?? <span className="text-slate-400">Not in the course list</span>}</p>
+                      <p className="text-xs text-slate-500">{columnSummary(col)}</p>
+                      {guess !== undefined && on && <Badge tone="violet"><Sparkles className="size-3" aria-hidden />{guess} credits {solvedCheck ? 'from the GPAs' : 'from EC'}</Badge>}
+                    </td>
+                    <td className="px-4 py-2 align-top">
+                      <input
+                        type="number" step="0.25" min="0" value={credits[col] ?? ''} disabled={!on} aria-label={`Credit for ${col}`}
+                        onChange={(e) => setCredits({ ...credits, [col]: e.target.value })}
+                        className={cx(inputClass, 'h-8 text-center', on && !(Number(credits[col]) > 0) && 'ring-rose-400')}
                       />
                     </td>
                   </tr>
@@ -200,7 +249,9 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
             </tbody>
           </table>
         </div>
-        {missingCredit.length > 0 && <p className="mt-2 text-xs text-rose-600">Enter the credit for {missingCredit.join(', ')}.</p>}
+        {duplicateCodes.length > 0 && <p className="mt-2 text-xs text-rose-600">Two columns can&apos;t have the same code: {duplicateCodes.join(', ')}.</p>}
+        {emptyCodes.length > 0 && <p className="mt-2 text-xs text-rose-600">Every included column needs a course code.</p>}
+        {missingCredit.length > 0 && <p className="mt-2 text-xs text-rose-600">Enter the credit for {missingCredit.map(finalCode).join(', ')}.</p>}
         {solvedCheck && (
           <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700">
             <CheckCircle2 className="size-3.5" aria-hidden /> Credits worked out from the sheet — they reproduce {solvedCheck.reproduced} of {solvedCheck.checked} printed GPAs exactly.
@@ -236,8 +287,8 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
         <div className="max-h-32 overflow-y-auto rounded-xl bg-rose-50 p-3 text-xs text-rose-700 ring-1 ring-rose-200">{sheet.problems.map((p) => <p key={p}>{p}</p>)}</div>
       )}
 
-      <Button icon={GraduationCap} loading={isPublishing} disabled={matched.length === 0 || missingCredit.length > 0} onClick={handlePublish} className="w-full">
-        {matched.length === 0 ? 'None of these rolls are our students' : `Publish results for ${matched.length} students`}
+      <Button icon={GraduationCap} loading={isPublishing} disabled={blocked} onClick={handlePublish} className="w-full">
+        {matched.length === 0 ? 'None of these rolls are our students' : columns.length === 0 ? 'Switch on at least one course' : `Publish results for ${matched.length} students`}
       </Button>
     </div>
   );
