@@ -12,6 +12,7 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.112.4",
     "@vercel/analytics": "^2.0.1",
+    "bijoy2unicode": "1.0.2",
     "docx": "^9.8.1",
     "lucide-react": "^1.49.0",
     "mammoth": "^1.13.0",

@@ -27,7 +27,7 @@ export default function ImportDetailsModal({ students, onClose, onSaved }: { stu
   const [fileName, setFileName] = useState('');
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [notFound, setNotFound] = useState<SheetDetails[]>([]);
-  const [legacy, setLegacy] = useState(0);
+  const [converted, setConverted] = useState(0);
   const [overwrite, setOverwrite] = useState<Set<string>>(new Set());
   const [rename, setRename] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -62,7 +62,7 @@ export default function ImportDetailsModal({ students, onClose, onSaved }: { stu
       });
       setPlans(next.filter((p) => Object.keys(p.fill).length || Object.keys(p.differs).length || p.nameDiffers));
       setNotFound(missing);
-      setLegacy(rows.filter((r) => r.legacyBangla).length);
+      setConverted(next.filter((p) => p.sheet.fromBijoy && (p.fill.name_bn || p.differs.name_bn)).length);
       setOverwrite(new Set());
       setRename(new Set());
       setFileName(file.name);
@@ -115,7 +115,7 @@ export default function ImportDetailsModal({ students, onClose, onSaved }: { stu
               <Badge tone="emerald">{plans.filter((p) => Object.keys(p.fill).length).length} students get missing details filled</Badge>
               <Badge tone="amber">{plans.filter((p) => Object.keys(p.differs).length || p.nameDiffers).length} with differences to review</Badge>
               {notFound.length > 0 && <Badge tone="slate">{notFound.length} rolls not in the system</Badge>}
-              {legacy > 0 && <Badge tone="slate">{legacy} Bangla names in the old Bijoy font — skipped</Badge>}
+              {converted > 0 && <Badge tone="indigo">{converted} Bangla names converted from the old Bijoy font — please check them</Badge>}
             </div>
             {plans.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500">Everything on this sheet already matches the system.</p>
@@ -139,7 +139,12 @@ export default function ImportDetailsModal({ students, onClose, onSaved }: { stu
                           )}
                         </td>
                         <td className="px-3 py-2 text-xs text-slate-700">
-                          {Object.entries(p.fill).map(([k, v]) => <p key={k}><span className="text-slate-400">{FIELDS.find((f) => f.key === k)?.label}:</span> {v}</p>)}
+                          {Object.entries(p.fill).map(([k, v]) => (
+                            <p key={k}>
+                              <span className="text-slate-400">{FIELDS.find((f) => f.key === k)?.label}:</span> {v}
+                              {k === 'name_bn' && p.sheet.fromBijoy && <span className="ml-1.5 rounded bg-indigo-50 px-1 py-px text-[10px] font-semibold text-indigo-700 ring-1 ring-indigo-200">from Bijoy</span>}
+                            </p>
+                          ))}
                           {!Object.keys(p.fill).length && <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-3 py-2 text-xs">
