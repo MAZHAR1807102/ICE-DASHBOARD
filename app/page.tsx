@@ -9,6 +9,13 @@ const PORTALS = [
     style: 'bg-slate-900 hover:bg-slate-800',
   },
   {
+    href: '/teacher-login',
+    title: 'Course Teachers',
+    description: 'Enter CT marks for the courses you teach. Sign in with an emailed link.',
+    action: 'Teacher sign in',
+    style: 'bg-violet-600 hover:bg-violet-700',
+  },
+  {
     href: '/student-login',
     title: 'Student Portal',
     description: 'Your CT marks, attendance, dues and department notices.',
@@ -31,7 +38,7 @@ export default function Home() {
       <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight text-center">Department of CSE</h1>
       <p className="mt-2 text-slate-600 text-center">Imperial College of Engineering — Student Management</p>
 
-      <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-2xl">
+      <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
         {PORTALS.map((portal) => (
           <div key={portal.href} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
             <h2 className="text-lg font-black text-slate-900">{portal.title}</h2>
