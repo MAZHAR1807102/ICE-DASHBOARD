@@ -1,15 +1,9 @@
 import { supabase } from '../../../../utils/supabase';
 import { toCsv } from '../../../../utils/csv';
 import type { Course, Student } from '../../../../utils/types';
+import { ctCount } from '../../../../utils/ct';
 
-// 2-credit courses have 3 CTs (max 10 each); 3-credit courses have 4 CTs (max 15 each).
-export const ctCount = (course?: Course) => (course?.credit === 2 ? 3 : 4);
-
-export function ctAverage(marks: { ct1?: number; ct2?: number; ct3?: number; ct4?: number }, course?: Course) {
-  const count = ctCount(course);
-  const total = (marks.ct1 || 0) + (marks.ct2 || 0) + (marks.ct3 || 0) + (count === 4 ? marks.ct4 || 0 : 0);
-  return (total / count).toFixed(1);
-}
+export { ctAverage, ctCount } from '../../../../utils/ct';
 
 // CSV columns: College ID, RU ID, Name, then CT1..CT3/CT4. Uploads read the same layout.
 export function gradingSheetCsv(students: Student[], course: Course) {

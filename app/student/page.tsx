@@ -2,46 +2,43 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../../utils/supabase';
 import { getSessionUser, signOut } from '../../utils/session';
 import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../utils/eligibility';
-import type { Course, CtMark, Notice, Student } from '../../utils/types';
+import { academicStanding, formatGpa } from '../../utils/grades';
+import { totalDue } from '../../utils/types';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import { loadProfile, type Profile } from './_components/data';
+import OverviewTab from './_components/OverviewTab';
+import CoursesTab from './_components/CoursesTab';
+import ResultsTab from './_components/ResultsTab';
+import PaymentsTab from './_components/PaymentsTab';
+import NoticesList from './_components/NoticesList';
+import { Card, taka } from './_components/ui';
 
-type CourseMark = Pick<Course, 'course_code' | 'course_name' | 'credit'> & { ct1: number; ct2: number; ct3: number; ct4: number };
+type Tab = 'overview' | 'courses' | 'results' | 'payments' | 'notices';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'courses', label: 'Courses & CT' },
+  { id: 'results', label: 'Results' },
+  { id: 'payments', label: 'Payments' },
+  { id: 'notices', label: 'Notices' },
+];
 
-// Everything the portal shows: the student's record, their semester's courses with CT marks, and notices.
-async function loadPortal(studentId: string) {
-  const { data: student } = await supabase.from('master_students').select('*').eq('id', studentId).single<Student>();
-  if (!student) return null;
-
-  const [courseRes, markRes, noticeRes] = await Promise.all([
-    supabase.from('courses').select('*').eq('semester', student.semester).order('course_code', { ascending: true }),
-    supabase.from('ct_marks').select('*').eq('student_id', studentId),
-    supabase.from('department_notices').select('*').order('created_at', { ascending: false }),
-  ]);
-
-  const marks = (markRes.data ?? []) as CtMark[];
-  const courseMarks: CourseMark[] = ((courseRes.data ?? []) as Course[]).map((course) => {
-    const m = marks.find((mark) => mark.course_code === course.course_code);
-    return {
-      course_code: course.course_code,
-      course_name: course.course_name,
-      credit: course.credit,
-      ct1: Number(m?.ct1) || 0,
-      ct2: Number(m?.ct2) || 0,
-      ct3: Number(m?.ct3) || 0,
-      ct4: Number(m?.ct4) || 0,
-    };
-  });
-
-  return { student, courseMarks, notices: (noticeRes.data ?? []) as Notice[] };
+function Stat({ label, value, sub, tone = 'text-slate-900' }: { label: string; value: string; sub: string; tone?: string }) {
+  return (
+    <div className="rounded-2xl bg-white/95 border border-white/60 shadow-sm px-4 py-3.5">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className={`text-2xl font-black mt-0.5 tabular-nums ${tone}`}>{value}</p>
+      <p className="text-xs text-slate-500 truncate">{sub}</p>
+    </div>
+  );
 }
 
 export default function StudentPortal() {
   const router = useRouter();
-  const [portal, setPortal] = useState<Awaited<ReturnType<typeof loadPortal>>>(null);
-  const [isPwdModalOpen, setIsPwdModalOpen] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
 
   useEffect(() => {
     getSessionUser().then((user) => {
@@ -49,164 +46,113 @@ export default function StudentPortal() {
         router.replace('/student-login');
         return;
       }
-      loadPortal(user.studentId).then(setPortal);
+      loadProfile(user.studentId).then(setProfile);
     });
   }, [router]);
 
-  const handleLogout = () => signOut('/student-login');
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <div className="w-9 h-9 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-500">Loading your profile…</p>
+      </div>
+    );
+  }
 
-  if (!portal) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-500">Loading Profile...</div>;
-  const { student: studentData, courseMarks, notices } = portal;
-
-  // --- AUTOMATED ELIGIBILITY LOGIC ---
-  const totalDues = (studentData.monthly_due || 0) + (studentData.semester_due || 0) + (studentData.exam_due || 0) + (studentData.attendance_fine || 0);
-  const hasGoodAttendance = (studentData.attendance_percentage || 0) >= MIN_ATTENDANCE_PERCENT;
-  const isFinanciallyCleared = totalDues === 0;
-  const isEligible = isExamEligible({ ...studentData, total_due: totalDues });
+  const { student, courses, results, transactions, notices } = profile;
+  const standing = academicStanding(results);
+  const due = totalDue(student);
+  const attendance = student.attendance_percentage || 0;
+  const eligible = isExamEligible({ ...student, total_due: due });
+  const creditsInProgress = courses.reduce((sum, c) => sum + Number(c.credit), 0);
+  const initials = student.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans">
-      {/* HEADER */}
-      <header className="max-w-6xl mx-auto flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold">ICE</div>
-          <h1 className="text-xl font-black text-slate-800">Student Space</h1>
-        </div>
-        <div className="flex space-x-3">
-          <button onClick={() => setIsPwdModalOpen(true)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold text-sm rounded-lg hover:bg-slate-200 transition-colors">Change Password</button>
-          <button onClick={handleLogout} className="px-4 py-2 bg-rose-50 text-rose-600 font-bold text-sm rounded-lg hover:bg-rose-100 transition-colors">Logout</button>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+      {/* TOP BAR */}
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[11px] font-black">ICE</div>
+            <span className="font-black text-slate-900 whitespace-nowrap">Student Space</span>
+          </div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button onClick={() => setIsPasswordOpen(true)} className="whitespace-nowrap px-2.5 sm:px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"><span className="hidden sm:inline">Change </span>Password</button>
+            <button onClick={() => signOut('/student-login')} className="whitespace-nowrap px-2.5 sm:px-3 py-1.5 text-sm font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">Log out</button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* LEFT COLUMN: IDENTITY */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 text-center">
-            <div className="w-24 h-24 mx-auto bg-indigo-100 text-indigo-500 rounded-full flex items-center justify-center text-3xl font-black mb-4 shadow-sm border-4 border-white">
-              {studentData.name.charAt(0)}
+      {/* PROFILE HERO */}
+      <div className="bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600">
+        <div className="max-w-6xl mx-auto px-4 pt-8 pb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+            <div className="w-20 h-20 shrink-0 rounded-2xl bg-white/15 ring-4 ring-white/20 flex items-center justify-center text-3xl font-black text-white">
+              {initials}
             </div>
-            <h2 className="text-2xl font-black text-slate-900">{studentData.name}</h2>
-            <p className="text-indigo-600 font-bold text-sm mb-4">RU ID: {studentData.ru_id || 'N/A'}</p>
-            
-            <div className="text-left bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-sm">
-              <p><span className="font-bold text-slate-500">College ID:</span> <span className="text-slate-800 font-semibold">{studentData.college_id}</span></p>
-              <p><span className="font-bold text-slate-500">Semester:</span> <span className="text-slate-800 font-semibold">{studentData.semester}</span></p>
-              <p><span className="font-bold text-slate-500">Advisor:</span> <span className="text-slate-800 font-semibold">{studentData.advisor || 'Not Assigned'}</span></p>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: BENCHMARKS & MARKS & NOTICES */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* EXAM SIGNAL BANNER */}
-          <div className={`p-6 rounded-2xl shadow-sm border-2 flex items-center justify-between ${isEligible ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
-            <div>
-              <p className={`text-sm font-bold uppercase tracking-wider ${isEligible ? 'text-emerald-600' : 'text-rose-600'}`}>Final Exam Registration Status</p>
-              <h2 className={`text-3xl font-black ${isEligible ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {isEligible ? '🟢 ELIGIBLE TO REGISTER' : '🔴 REGISTRATION BLOCKED'}
-              </h2>
-              {!isEligible && <p className="text-rose-600 font-medium text-sm mt-1">You must clear financial dues and maintain {MIN_ATTENDANCE_PERCENT}%+ attendance.</p>}
-              {studentData.eligibility_override && <p className="text-emerald-700 font-bold text-xs mt-1 bg-emerald-100 inline-block px-2 py-1 rounded">Manually Approved by Coordinator</p>}
-            </div>
-          </div>
-
-          {/* READ-ONLY METRICS */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Attendance</p>
-              <p className={`text-4xl font-black ${hasGoodAttendance ? 'text-emerald-600' : 'text-rose-600'}`}>{studentData.attendance_percentage}%</p>
-              <p className="text-xs font-bold text-slate-500 mt-2">Target: {MIN_ATTENDANCE_PERCENT}% Minimum</p>
-            </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Outstanding Dues</p>
-              <p className={`text-4xl font-black ${isFinanciallyCleared ? 'text-emerald-600' : 'text-rose-600'}`}>৳{totalDues}</p>
-              <p className="text-xs font-bold text-slate-500 mt-2">Target: ৳0 Balance</p>
-            </div>
-          </div>
-
-          {/* NEW: ENROLLED COURSES & CT MARKS */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-slate-50 p-4 border-b border-slate-200">
-              <h3 className="text-slate-800 font-bold flex items-center"><span className="mr-2">📝</span> Semester {studentData.semester} Courses & CT Marks</h3>
-            </div>
-            <div className="overflow-x-auto p-4">
-              <table className="w-full text-left border-collapse whitespace-nowrap">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="p-3 text-xs font-bold text-slate-500 uppercase">Course</th>
-                    <th className="p-3 text-xs font-bold text-slate-500 uppercase text-center">CT-1</th>
-                    <th className="p-3 text-xs font-bold text-slate-500 uppercase text-center">CT-2</th>
-                    <th className="p-3 text-xs font-bold text-slate-500 uppercase text-center">CT-3</th>
-                    <th className="p-3 text-xs font-bold text-slate-500 uppercase text-center">CT-4</th>
-                    <th className="p-3 text-xs font-black text-indigo-700 uppercase text-center">Average</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {courseMarks.map((course, idx) => {
-                    const isTwoCredit = course.credit === 2;
-                    const divider = isTwoCredit ? 3 : 4;
-                    const total = course.ct1 + course.ct2 + course.ct3 + (isTwoCredit ? 0 : course.ct4);
-                    const avg = (total / divider).toFixed(1);
-
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-3 text-sm">
-                          <span className="font-bold text-slate-800 block">{course.course_code}</span>
-                          <span className="text-xs text-slate-500">{course.course_name} ({course.credit} Cr)</span>
-                        </td>
-                        <td className="p-3 text-sm text-center font-medium text-slate-700">{course.ct1 || '-'}</td>
-                        <td className="p-3 text-sm text-center font-medium text-slate-700">{course.ct2 || '-'}</td>
-                        <td className="p-3 text-sm text-center font-medium text-slate-700">{course.ct3 || '-'}</td>
-                        <td className="p-3 text-sm text-center font-medium text-slate-700">
-                          {!isTwoCredit ? (course.ct4 || '-') : <span className="text-slate-400 text-xs italic bg-slate-100 px-2 py-1 rounded">N/A</span>}
-                        </td>
-                        <td className="p-3 text-sm text-center font-black text-indigo-700 bg-indigo-50/50 rounded-r-lg">
-                          {avg}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {courseMarks.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-500 font-medium">No courses have been assigned to your semester yet.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* NOTICES BOARD */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-slate-800 p-4">
-              <h3 className="text-white font-bold flex items-center"><span className="mr-2">📢</span> Department Broadcasts</h3>
-            </div>
-            <div className="p-0 divide-y divide-slate-100 max-h-96 overflow-y-auto">
-              {notices.length === 0 ? (
-                <p className="p-8 text-center text-slate-500 font-medium">No active notices.</p>
-              ) : (
-                notices.map(notice => (
-                  <div key={notice.id} className="p-6 hover:bg-slate-50 transition-colors">
-                    <p className="text-xs font-bold text-indigo-500 mb-1">{new Date(notice.created_at).toLocaleDateString()} • {notice.posted_by}</p>
-                    <h4 className="text-lg font-bold text-slate-900 mb-2">{notice.title}</h4>
-                    <p className="text-sm text-slate-600 mb-4 whitespace-pre-wrap">{notice.description}</p>
-                    {notice.file_url && (
-                      <a href={notice.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors">
-                        📄 View Attached Document
-                      </a>
-                    )}
-                  </div>
-                ))
+            <div className="min-w-0 flex-1 text-white">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{student.name}</h1>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${eligible ? 'bg-emerald-400/90 text-emerald-950' : 'bg-rose-400/90 text-rose-950'}`}>
+                  {eligible ? '● Exam eligible' : '● Exam blocked'}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-indigo-100">
+                <span>RU ID <b className="text-white">{student.ru_id || '—'}</b></span>
+                <span>College ID <b className="text-white">{student.college_id}</b></span>
+                <span>Semester <b className="text-white">{student.semester}</b></span>
+                <span>Advisor <b className="text-white">{student.advisor || 'Not assigned'}</b></span>
+              </div>
+              {(student.student_contact || student.guardian_contact) && (
+                <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-xs text-indigo-200">
+                  {student.student_contact && <span>📱 {student.student_contact}</span>}
+                  {student.guardian_contact && <span>Guardian: {student.guardian_contact}</span>}
+                </div>
               )}
             </div>
           </div>
 
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Stat label="CGPA" value={results.length ? formatGpa(standing.cgpa) : '—'} sub={results.length ? 'out of 4.00' : 'No results yet'} />
+            <Stat label="Credits earned" value={String(standing.creditsEarned)} sub={`${creditsInProgress} in progress this semester`} />
+            <Stat
+              label="Attendance"
+              value={`${attendance}%`}
+              sub={attendance >= MIN_ATTENDANCE_PERCENT ? `Above the ${MIN_ATTENDANCE_PERCENT}% minimum` : `Below the ${MIN_ATTENDANCE_PERCENT}% minimum`}
+              tone={attendance >= MIN_ATTENDANCE_PERCENT ? 'text-emerald-600' : 'text-rose-600'}
+            />
+            <Stat label="Fees due" value={taka(due)} sub={due > 0 ? 'Outstanding balance' : 'All clear'} tone={due > 0 ? 'text-rose-600' : 'text-emerald-600'} />
+          </div>
         </div>
       </div>
 
-      {isPwdModalOpen && <ChangePasswordModal onClose={() => setIsPwdModalOpen(false)} />}
+      {/* TABS */}
+      <nav className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`whitespace-nowrap px-4 py-3.5 text-sm font-bold border-b-2 transition-colors ${tab === t.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              {t.label}
+              {t.id === 'notices' && notices.length > 0 && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600">{notices.length}</span>}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        {tab === 'overview' && <OverviewTab profile={profile} onOpen={setTab} />}
+        {tab === 'courses' && <CoursesTab semester={student.semester} courses={courses} marks={profile.marks} />}
+        {tab === 'results' && <ResultsTab results={results} />}
+        {tab === 'payments' && <PaymentsTab student={student} transactions={transactions} />}
+        {tab === 'notices' && <Card title="Department notices"><NoticesList notices={notices} /></Card>}
+      </main>
+
+      {isPasswordOpen && <ChangePasswordModal onClose={() => setIsPasswordOpen(false)} />}
     </div>
   );
 }

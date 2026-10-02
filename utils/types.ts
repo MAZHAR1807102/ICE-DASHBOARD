@@ -75,3 +75,15 @@ export const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export const totalDue = (s: Pick<Student, 'monthly_due' | 'semester_due' | 'exam_due' | 'attendance_fine'>) =>
   (s.monthly_due || 0) + (s.semester_due || 0) + (s.exam_due || 0) + (s.attendance_fine || 0);
+
+export type CourseResult = {
+  id: string;
+  student_id: string;
+  semester: number;
+  course_code: string;
+  course_name: string | null;
+  credit: number;
+  grade: string;
+  grade_point: number;
+  published_at: string;
+};
