@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSessionUser } from '../../utils/session';
 import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../utils/eligibility';
-import { academicStanding, formatGpa } from '../../utils/grades';
-import { totalDue } from '../../utils/types';
+import { academicStanding } from '../../utils/grades';
+import { DEGREE_CREDITS, totalDue } from '../../utils/types';
 import Brand from '../components/Brand';
 import UserMenu from '../components/UserMenu';
 import { loadProfile, type Profile } from './_components/data';
@@ -60,7 +60,8 @@ export default function StudentPortal() {
   }
 
   const { student, courses, results, transactions, notices } = profile;
-  const standing = academicStanding(results);
+  const standing = academicStanding(results, profile.opening);
+  const hasStanding = standing.creditsCounted > 0;
   const due = totalDue(student);
   const attendance = student.attendance_percentage || 0;
   const eligible = isExamEligible({ ...student, total_due: due });
@@ -107,8 +108,8 @@ export default function StudentPortal() {
           </div>
 
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Stat label="CGPA" value={results.length ? formatGpa(standing.cgpa) : '—'} sub={results.length ? 'out of 4.00' : 'No results yet'} />
-            <Stat label="Credits earned" value={String(standing.creditsEarned)} sub={`${creditsInProgress} in progress this semester`} />
+            <Stat label="CGPA" value={hasStanding ? standing.cgpa.toFixed(2) : '—'} sub={hasStanding ? `Running, through semester ${Math.max(profile.opening?.through_semester ?? 0, ...results.map((r) => r.semester))}` : 'No results yet'} />
+            <Stat label="Credits earned" value={`${standing.creditsEarned} / ${DEGREE_CREDITS}`} sub={`${creditsInProgress} in progress this semester`} />
             <Stat
               label="Attendance"
               value={`${attendance}%`}
@@ -141,7 +142,7 @@ export default function StudentPortal() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {tab === 'overview' && <OverviewTab profile={profile} onOpen={setTab} />}
         {tab === 'courses' && <CoursesTab semester={student.semester} courses={courses} marks={profile.marks} />}
-        {tab === 'results' && <ResultsTab results={results} official={profile.official} />}
+        {tab === 'results' && <ResultsTab results={results} official={profile.official} opening={profile.opening} />}
         {tab === 'payments' && <PaymentsTab student={student} transactions={transactions} />}
         {tab === 'notices' && <Card title="Department notices"><NoticesList notices={notices} /></Card>}
       </main>

@@ -22,14 +22,19 @@ export async function loadResultFile(file: File): Promise<Grid> {
   }
 
   if (/\.(xlsx|xls|csv|ods)$/.test(name)) {
-    const XLSX = await import('xlsx');
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '' }).map((r) => r.map((c) => String(c ?? '')));
+    const rows = await loadSpreadsheet(file);
     // Title = the text above the header (first few rows that hold a single long cell).
     const title = rows.slice(0, 6).map((r) => r.filter(Boolean).join(' ')).join(' ');
     return { title, rows };
   }
 
   throw new Error('Unsupported file type. Upload a PDF, Excel (.xlsx / .xls) or CSV file.');
+}
+
+// First sheet of an Excel / CSV / ODS file as rows of text cells.
+export async function loadSpreadsheet(file: File): Promise<string[][]> {
+  const XLSX = await import('xlsx');
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '' }).map((r) => r.map((c) => String(c ?? '').trim()));
 }

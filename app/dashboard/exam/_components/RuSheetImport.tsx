@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileUp, GraduationCap, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
-import { inferCredits, parseResultSheet, type ParsedSheet } from '../../../../utils/result-sheet';
+import { inferCredits, parseResultSheet, solveCreditsFromGpa, type ParsedSheet } from '../../../../utils/result-sheet';
+import { examKey } from '../../../../utils/grades';
 import { loadResultFile } from '../../../../utils/result-sheet-loader';
 import { SEMESTERS, type Course, type Student } from '../../../../utils/types';
 import { Badge, Button, cx, inputClass, table } from '../../../components/ui';
@@ -20,6 +21,7 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
   const [semester, setSemester] = useState(1);
   const [credits, setCredits] = useState<Record<string, string>>({});
   const [suggested, setSuggested] = useState<Record<string, number>>({});
+  const [solvedCheck, setSolvedCheck] = useState<{ reproduced: number; checked: number } | null>(null);
   const [catalog, setCatalog] = useState<Course[]>([]);
   const [isReading, setIsReading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -41,8 +43,13 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
     try {
       const parsed = parseResultSheet(await loadResultFile(file));
       if (parsed.courses.length === 0 || parsed.students.length === 0) throw new Error(parsed.problems[0] ?? 'Nothing to import was found in this file.');
-      const inferred = inferCredits(parsed);
+      // Best source first: credits solved from the printed GPAs (verified against every student),
+      // then single-F deductions from the EC column, then the course list.
+      const solved = solveCreditsFromGpa(parsed);
+      const trusted = solved && solved.reproduced >= solved.checked * 0.9 ? solved : null;
+      const inferred = { ...inferCredits(parsed), ...(trusted?.credits ?? {}) };
       setSuggested(inferred);
+      setSolvedCheck(trusted ? { reproduced: trusted.reproduced, checked: trusted.checked } : null);
       setCredits(Object.fromEntries(parsed.courses.map((code) => {
         const known = catalog.find((c) => c.course_code.toUpperCase() === code);
         return [code, String(inferred[code] ?? known?.credit ?? '')];
@@ -76,22 +83,24 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
     if (!sheet || matched.length === 0) return;
     const ok = await confirm({
       title: `Publish semester ${semester} results for ${matched.length} students?`,
-      body: `${gradeCount} course grades${sheet.hasOfficialFigures ? ' plus the official EC, GPA, YGPA, result and merit' : ''}. Students see them immediately. Grades already published for the same course and semester are replaced.`,
+      body: `${gradeCount} course grades${sheet.hasOfficialFigures ? ' plus the official EC, GPA, YGPA, result and merit' : ''}. Students see them immediately and their CGPA is recalculated.\n\nRe-uploading this same exam replaces it. A different exam (retake or improvement) is kept as another attempt — the best grade counts.`,
       confirmLabel: 'Publish results',
     });
     if (!ok) return;
 
     setIsPublishing(true);
+    const key = examKey(sheet.title);
     const courseRows = matched.flatMap((s) => sheet.courses.filter((c) => s.grades[c]).map((code) => ({
       student_id: byRoll.get(s.roll)!.id,
       semester,
+      exam_key: key,
       course_code: code,
       course_name: catalog.find((c) => c.course_code.toUpperCase() === code)?.course_name ?? null,
       credit: Number(credits[code]),
       grade: s.grades[code],
     })));
     const { error: courseError } = courseRows.length
-      ? await supabase.from('course_results').upsert(courseRows, { onConflict: 'student_id,semester,course_code' })
+      ? await supabase.from('course_results').upsert(courseRows, { onConflict: 'student_id,semester,course_code,exam_key' })
       : { error: null };
 
     let summaryError = null;
@@ -99,6 +108,7 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
       const summaryRows = matched.map((s) => ({
         student_id: byRoll.get(s.roll)!.id,
         semester,
+        exam_key: key,
         exam_title: sheet.title || null,
         earned_credits: s.ec ?? null,
         gpa: s.gpa ?? null,
@@ -107,7 +117,7 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
         result_status: s.result ?? null,
         merit_position: s.merit ?? null,
       }));
-      ({ error: summaryError } = await supabase.from('semester_results').upsert(summaryRows, { onConflict: 'student_id,semester' }));
+      ({ error: summaryError } = await supabase.from('semester_results').upsert(summaryRows, { onConflict: 'student_id,semester,exam_key' }));
     }
     setIsPublishing(false);
 
@@ -181,7 +191,7 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
                       <p className="font-medium text-slate-900">{code}</p>
                       <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                         {known?.course_name ?? 'Not in the course list'}
-                        {guess !== undefined && <Badge tone="violet"><Sparkles className="size-3" aria-hidden />{guess} from EC</Badge>}
+                        {guess !== undefined && <Badge tone="violet"><Sparkles className="size-3" aria-hidden />{guess} {solvedCheck ? 'from the GPAs' : 'from EC'}</Badge>}
                       </p>
                     </td>
                     <td className="px-4 py-2">
@@ -198,6 +208,11 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
           </table>
         </div>
         {missingCredit.length > 0 && <p className="mt-2 text-xs text-rose-600">Enter the credit for {missingCredit.join(', ')}.</p>}
+        {solvedCheck && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700">
+            <CheckCircle2 className="size-3.5" aria-hidden /> Credits worked out from the sheet — they reproduce {solvedCheck.reproduced} of {solvedCheck.checked} printed GPAs exactly.
+          </p>
+        )}
         {ecMismatches.length > 0 && (
           <p className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />

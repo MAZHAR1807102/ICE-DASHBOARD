@@ -102,7 +102,7 @@ function TemplateImport({ students, onPublished }: { students: Roster; onPublish
     if (!(await confirm({ title: `Publish ${preview.rows.length} results for semester ${semester}?`, body: 'Students see them immediately. Existing grades for the same course and semester are replaced.', confirmLabel: 'Publish' }))) return;
 
     setIsWorking(true);
-    const { error } = await supabase.from('course_results').upsert(preview.rows, { onConflict: 'student_id,semester,course_code' });
+    const { error } = await supabase.from('course_results').upsert(preview.rows.map((r) => ({ ...r, exam_key: '' })), { onConflict: 'student_id,semester,course_code,exam_key' });
     setIsWorking(false);
     if (error) return toast.error(`Results not published: ${error.message}`);
     onPublished(`Published ${preview.rows.length} results for semester ${semester}.`);
