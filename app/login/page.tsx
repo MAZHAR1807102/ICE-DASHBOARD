@@ -1,23 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
 import { supabase } from '../../utils/supabase';
+import { FACULTY_ROLES, ROLE_HOME, roleFromMetadata } from '../../utils/auth';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Auto-skip if the device already remembers an active session
-  useEffect(() => {
-    const session = localStorage.getItem('faculty_user');
-    if (session) {
-      router.replace('/dashboard');
-    }
-  }, [router]);
+  // Already-signed-in visitors are redirected away from this page by proxy.ts.
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,31 +18,21 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Fetch the user from your dynamic faculty_users table
-      const { data: user, error: dbError } = await supabase
-        .from('faculty_users')
-        .select('*')
-        .eq('email', email)
-        .eq('password', password)
-        .single();
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      if (dbError || !user) {
+      const role = roleFromMetadata(data.user?.app_metadata);
+      if (authError || !role || !FACULTY_ROLES.includes(role)) {
+        if (data.session) await supabase.auth.signOut();
         setError('Invalid credentials. Please verify your email and password.');
         setIsLoading(false);
         return;
       }
 
-      // Save the verified database session to device memory
-      const userSession = { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role, 
-        name: user.name 
-      };
-      localStorage.setItem('faculty_user', JSON.stringify(userSession));
-      
-      // Redirect to the traffic director
-      router.replace('/dashboard');
+      // Full navigation so the proxy sees the new session cookie.
+      window.location.replace(ROLE_HOME[role]);
 
     } catch (err) {
       setError('A connection error occurred. Please try again.');

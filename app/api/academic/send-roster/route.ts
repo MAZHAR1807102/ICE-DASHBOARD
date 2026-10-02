@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { requireRole } from '../../../../utils/supabase-server';
 
 export async function POST(request: Request) {
+  const auth = await requireRole(['academic', 'hod']);
+  if ('error' in auth) return auth.error;
+
   try {
     const { teacherEmail, teacherName, courseCode, courseName, csvData } = await request.json();
 
