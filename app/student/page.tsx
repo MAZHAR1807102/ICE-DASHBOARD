@@ -141,7 +141,7 @@ export default function StudentPortal() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {tab === 'overview' && <OverviewTab profile={profile} onOpen={setTab} />}
         {tab === 'courses' && <CoursesTab semester={student.semester} courses={courses} marks={profile.marks} />}
-        {tab === 'results' && <ResultsTab results={results} />}
+        {tab === 'results' && <ResultsTab results={results} official={profile.official} />}
         {tab === 'payments' && <PaymentsTab student={student} transactions={transactions} />}
         {tab === 'notices' && <Card title="Department notices"><NoticesList notices={notices} /></Card>}
       </main>

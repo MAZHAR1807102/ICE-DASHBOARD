@@ -22,11 +22,11 @@ function Check({ ok, label, detail }: { ok: boolean; label: string; detail: stri
 }
 
 export default function OverviewTab({ profile, onOpen }: { profile: Profile; onOpen: (tab: 'courses' | 'results' | 'payments' | 'notices') => void }) {
-  const { student, courses, marks, results, notices } = profile;
+  const { student, courses, marks, results, official, notices } = profile;
   const attendance = student.attendance_percentage || 0;
   const due = totalDue(student);
   const eligible = isExamEligible({ ...student, total_due: due });
-  const semesters = semesterSummaries(results);
+  const semesters = semesterSummaries(results, official);
   const more = (tab: 'courses' | 'results' | 'payments' | 'notices', text: string) => (
     <button onClick={() => onOpen(tab)} className="shrink-0 whitespace-nowrap text-xs font-bold text-indigo-600 hover:text-indigo-800">{text} →</button>
   );

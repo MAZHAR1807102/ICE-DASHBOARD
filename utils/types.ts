@@ -89,3 +89,15 @@ export type CourseResult = {
   grade_point: number;
   published_at: string;
 };
+
+// Figures RU publishes per student and semester (migration 006).
+export type SemesterResult = {
+  semester: number;
+  exam_title: string | null;
+  earned_credits: number | null;
+  gpa: number | null;
+  year_earned_credits: number | null;
+  ygpa: number | null;
+  result_status: string | null;
+  merit_position: number | null;
+};

@@ -62,3 +62,16 @@ Safe to run any time — adds two columns to `courses` and three functions; noth
 3. Deploy the code.
 4. Academic office: Academic → Curriculum & Faculty → make sure each course has the teacher's
    email → pick the semester → **📧 Email CT links to teachers** (or **Send link** on one course).
+
+---
+
+# Official RU result sheets (006)
+
+Safe to run any time — widens `course_results.credit` to two decimals (0.75-credit labs) and adds
+the `semester_results` table; existing data is unchanged.
+
+1. Supabase → SQL Editor → run `migrations/006_official_results.sql` ("Run without RLS" if warned).
+2. Deploy the code.
+3. Exam office: Exams → **Publish Results** → **RU result sheet** → upload the PDF / Excel exactly
+   as RU sends it → check the semester and course credits → Publish.
+   Scanned (image-only) PDFs can't be read — use the Excel file or a PDF exported from Excel/Word.
