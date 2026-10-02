@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Download, FileSpreadsheet, GraduationCap, Table2, Upload } from 'lucide-react';
 import RuSheetImport from './RuSheetImport';
+import { classifyCohorts, orderByCohort } from '../../../../utils/cohort';
 import Modal from '../../../components/Modal';
 import { Button, Tabs, inputClass } from '../../../components/ui';
 import { useConfirm, useToast } from '../../../components/Providers';
@@ -59,7 +60,8 @@ function TemplateImport({ students, onPublished }: { students: Roster; onPublish
   const handleTemplate = async () => {
     const courses = await coursesFor(semester);
     if (courses.length === 0) return toast.error(`No courses are set up for semester ${semester}. Add them in the Academic portal first.`);
-    const cohort = students.filter((s) => s.semester === semester);
+    const groups = classifyCohorts(students);
+    const cohort = orderByCohort(students.filter((s) => s.semester === semester), groups); // Regular first, then Readd
     const rows = cohort.flatMap((s) => courses.map((c) => [s.college_id, s.ru_id || '', s.name, c.course_code, c.course_name, c.credit, '']));
     downloadCsv(`Results_Semester_${semester}.csv`, toCsv(HEADER, rows));
   };

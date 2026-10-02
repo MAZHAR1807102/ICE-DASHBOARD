@@ -1,19 +1,21 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { ClipboardList, Download, Mail, Save, Upload } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
 import { downloadCsv, parseCsv } from '../../../../utils/csv';
 import type { Course, CtMark, Student } from '../../../../utils/types';
-import { Button, EmptyState, cx, inputClass, table } from '../../../components/ui';
+import { Button, EmptyState, GroupHeading, ReaddBadge, cx, inputClass, table } from '../../../components/ui';
+import { groupHeadings, type Cohort } from '../../../../utils/cohort';
 import { ctAverage, ctCount, emailRoster, gradingSheetCsv, readFileText } from './shared';
 
 type Marks = { ct1: number; ct2: number; ct3: number; ct4: number };
 const CT_KEYS = ['ct1', 'ct2', 'ct3', 'ct4'] as const;
 
 // Remounted (via `key`) whenever the selected course or its marks change, so edits start fresh.
-export default function CtMarksTab({ students, course, marks, onChanged, showMessage }: {
-  students: Student[];
+export default function CtMarksTab({ students, cohorts, course, marks, onChanged, showMessage }: {
+  students: Student[]; // already ordered Regular → Readd
+  cohorts: Map<string, Cohort>;
   course?: Course;
   marks: Record<string, CtMark>;
   onChanged: () => void;
@@ -28,6 +30,7 @@ export default function CtMarksTab({ students, course, marks, onChanged, showMes
   const [savingId, setSavingId] = useState<string | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const headings = useMemo(() => groupHeadings(students, cohorts, false), [students, cohorts]);
 
   if (!course) {
     return <EmptyState icon={ClipboardList} title="Select a semester and course" body="Choose a semester and one of its courses above to see and edit CT marks. Teachers can also enter marks themselves in the Teacher portal." />;
@@ -119,10 +122,13 @@ export default function CtMarksTab({ students, course, marks, onChanged, showMes
             <tbody className={table.body}>
               {students.map((student) => {
                 const studentMarks = edits[student.id];
+                const heading = headings.get(student.id);
                 return (
-                  <tr key={student.id} className={table.row}>
+                  <Fragment key={student.id}>
+                  {heading && <GroupHeading colSpan={keys.length + 3} {...heading} />}
+                  <tr className={table.row}>
                     <td className={table.td}>
-                      <p className="font-medium text-slate-900">{student.name}</p>
+                      <p className="font-medium text-slate-900">{student.name}{cohorts.get(student.id) === 'readd' && <ReaddBadge />}</p>
                       <p className="text-xs text-slate-500">{student.college_id} · RU {student.ru_id || '—'}</p>
                     </td>
                     {keys.map((key) => {
@@ -142,6 +148,7 @@ export default function CtMarksTab({ students, course, marks, onChanged, showMes
                       <Button size="xs" icon={Save} loading={savingId === student.id} onClick={() => handleSave(student.id)}>Save</Button>
                     </td>
                   </tr>
+                  </Fragment>
                 );
               })}
             </tbody>

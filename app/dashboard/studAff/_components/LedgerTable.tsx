@@ -3,7 +3,9 @@
 import { History, HandCoins, Search, SlidersHorizontal } from 'lucide-react';
 import { totalDue, type Student } from '../../../../utils/types';
 import { MIN_ATTENDANCE_PERCENT } from '../../../../utils/eligibility';
-import { Badge, Button, EmptyState, table, taka } from '../../../components/ui';
+import { Fragment } from 'react';
+import { Badge, Button, EmptyState, GroupHeading, ReaddBadge, table, taka } from '../../../components/ui';
+import { groupHeadings, type Cohort } from '../../../../utils/cohort';
 
 function Due({ due, rate }: { due: number; rate?: number }) {
   return (
@@ -14,12 +16,15 @@ function Due({ due, rate }: { due: number; rate?: number }) {
   );
 }
 
-export default function LedgerTable({ students, onPayment, onHistory, onDues }: {
-  students: Student[];
+export default function LedgerTable({ students, cohorts, showSemester, onPayment, onHistory, onDues }: {
+  students: Student[]; // already ordered Regular → Readd
+  cohorts: Map<string, Cohort>;
+  showSemester: boolean;
   onPayment: (s: Student) => void;
   onHistory: (s: Student) => void;
   onDues: (s: Student) => void;
 }) {
+  const headings = groupHeadings(students, cohorts, showSemester);
   if (students.length === 0) return <EmptyState icon={Search} title="No students found" body="Try a different name, ID or semester." />;
 
   return (
@@ -41,10 +46,13 @@ export default function LedgerTable({ students, onPayment, onHistory, onDues }: 
           {students.map((s) => {
             const due = totalDue(s);
             const attendance = s.attendance_percentage || 0;
+            const heading = headings.get(s.id);
             return (
-              <tr key={s.id} className={table.row}>
+              <Fragment key={s.id}>
+              {heading && <GroupHeading colSpan={8} {...heading} />}
+              <tr className={table.row}>
                 <td className={table.td}>
-                  <p className="font-medium text-slate-900">{s.name}</p>
+                  <p className="font-medium text-slate-900">{s.name}{cohorts.get(s.id) === 'readd' && <ReaddBadge />}</p>
                   <p className="text-xs text-slate-500">{s.college_id} · RU {s.ru_id || '—'} · Sem {s.semester}</p>
                 </td>
                 <td className={`${table.td} text-center`}>
@@ -65,6 +73,7 @@ export default function LedgerTable({ students, onPayment, onHistory, onDues }: 
                   </div>
                 </td>
               </tr>
+              </Fragment>
             );
           })}
         </tbody>
