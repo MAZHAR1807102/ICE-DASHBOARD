@@ -25,6 +25,7 @@ export type ParsedSheet = {
   students: SheetStudent[];
   hasOfficialFigures: boolean;
   problems: string[];
+  merged: string[]; // rolls that appeared on more than one row and were combined
 };
 
 const COURSE = /[A-Z]{2,5}\s?\d{4}/g;
@@ -53,6 +54,9 @@ const ORDINAL: Record<string, number> = { first: 1, second: 2, third: 3, fourth:
 
 // "B. Sc. (Engg.) 2nd Year 2nd Semester" → 4; falls back to the course codes (CSE2211 → year 2, semester 2).
 export function detectSemester(title: string, courses: string[]): number | null {
+  // RU also writes "Part-3 Odd Semester": part = year, odd = 1st semester, even = 2nd.
+  const part = title.toLowerCase().match(/part\s*[-–]?\s*([1-4])\s*(odd|even)\s*sem/);
+  if (part) return (Number(part[1]) - 1) * 2 + (part[2] === 'odd' ? 1 : 2);
   const m = title.toLowerCase().match(/(first|second|third|fourth|[1-4](?:st|nd|rd|th)?)\s*year\s*(first|second|[1-2](?:st|nd|rd|th)?)\s*semester/);
   if (m) {
     const year = ORDINAL[m[1]] ?? ORDINAL[m[1].replace(/\D/g, '')];
@@ -79,7 +83,7 @@ export function parseResultSheet({ title, rows }: Grid): ParsedSheet {
   // The header row has the course codes; a second header row may carry EC / GPA / YEC / YGPA.
   const headerIndex = grid.findIndex((r) => r.filter(isCourse).length >= 2);
   if (headerIndex === -1) {
-    return { title, semesterGuess: null, courses: [], students: [], hasOfficialFigures: false, problems: ['No course codes (like CSE2211) were found in the header. Is this a result sheet?'] };
+    return { title, semesterGuess: null, courses: [], students: [], hasOfficialFigures: false, problems: ['No course codes (like CSE2211) were found in the header. Is this a result sheet?'], merged: [] };
   }
 
   const columns = new Map<string, number>();
@@ -129,11 +133,29 @@ export function parseResultSheet({ title, rows }: Grid): ParsedSheet {
 
   if (students.length === 0) problems.push('No student rows (10-digit Roll numbers) were found under the header.');
 
+  // Retake / improvement sheets can list a student on several rows (e.g. one per course).
+  // Combine them: for a course given twice keep the better grade; fill in any missing figures.
+  const byRoll = new Map<string, SheetStudent>();
+  const merged = new Set<string>();
+  students.forEach((s) => {
+    const seen = byRoll.get(s.roll);
+    if (!seen) return byRoll.set(s.roll, { ...s, grades: { ...s.grades } });
+    merged.add(s.roll);
+    courses.forEach((c) => {
+      const a = seen.grades[c], b = s.grades[c];
+      if (b && (!a || GRADE_POINTS[b] > GRADE_POINTS[a])) seen.grades[c] = b;
+    });
+    (['name', 'ec', 'gpa', 'yec', 'ygpa', 'result', 'merit'] as const).forEach((k) => {
+      if (seen[k] === undefined && s[k] !== undefined) (seen as Record<string, unknown>)[k] = s[k];
+    });
+  });
+
   return {
     title,
     semesterGuess: detectSemester(title, courses),
     courses,
-    students,
+    students: [...byRoll.values()],
+    merged: [...merged],
     hasOfficialFigures: ['ec', 'gpa', 'ygpa', 'result'].some((k) => columns.has(k)),
     problems,
   };
