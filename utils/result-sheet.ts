@@ -2,7 +2,7 @@
 // course holding the letter grade, then optional EC, GPA, YEC, YGPA, Result and Merit columns.
 // Works from a plain grid of cells (CSV / Excel) or from positioned PDF text (see pdfPagesToGrid).
 
-import { GRADES } from './grades';
+import { GRADES, GRADE_POINTS } from './grades';
 
 export type Grid = { title: string; rows: string[][] };
 
@@ -236,3 +236,44 @@ export function inferCredits(sheet: ParsedSheet): Record<string, number> {
   });
   return Object.fromEntries([...guesses].map(([code, values]) => [code, values.sort((a, b) => values.filter((v) => v === b).length - values.filter((v) => v === a).length)[0]]));
 }
+
+// Works out every course's credit from the printed GPAs (RU counts an F as 0.00):
+// for each student, sum(gradePoint × credit) = GPA × sum(credit). Solved by least squares with the
+// full load fixed, rounded to quarter credits, then checked against every printed GPA.
+export function solveCreditsFromGpa(sheet: ParsedSheet): { credits: Record<string, number>; reproduced: number; checked: number } | null {
+  const courses = sheet.courses;
+  const n = courses.length;
+  const complete = sheet.students.filter((s) => s.gpa !== undefined && s.gpa > 0 && courses.every((c) => s.grades[c]));
+  const fullLoads = complete.map((s) => s.ec).filter((ec): ec is number => ec !== undefined && ec > 0);
+  const load = fullLoads.length ? Math.max(...fullLoads) : undefined;
+  if (!load || complete.length < n) return null;
+
+  const rows: number[][] = complete.map((s) => courses.map((c) => GRADE_POINTS[s.grades[c]] - s.gpa!));
+  const rhs: number[] = complete.map(() => 0);
+  rows.push(courses.map(() => 50)); // anchor: credits add up to the full load
+  rhs.push(50 * load);
+
+  // Normal equations + Gauss-Jordan elimination.
+  const A = Array.from({ length: n }, () => Array(n).fill(0));
+  const b = Array(n).fill(0);
+  rows.forEach((row, i) => row.forEach((v, j) => { b[j] += v * rhs[i]; row.forEach((w, k) => (A[j][k] += v * w)); }));
+  for (let i = 0; i < n; i++) {
+    let p = i;
+    for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+    [A[i], A[p]] = [A[p], A[i]]; [b[i], b[p]] = [b[p], b[i]];
+    if (Math.abs(A[i][i]) < 1e-9) return null;
+    for (let r = 0; r < n; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let k = i; k < n; k++) A[r][k] -= f * A[i][k]; b[r] -= f * b[i]; }
+  }
+  const credits = Object.fromEntries(courses.map((c, i) => [c, Math.round((b[i] / A[i][i]) * 4) / 4]));
+  if (Object.values(credits).some((cr) => cr <= 0)) return null;
+
+  const withGpa = sheet.students.filter((s) => s.gpa !== undefined && courses.some((c) => s.grades[c]));
+  const reproduced = withGpa.filter((s) => {
+    const taken = courses.filter((c) => s.grades[c]);
+    const total = taken.reduce((sum, c) => sum + credits[c], 0);
+    const gpa = taken.reduce((sum, c) => sum + GRADE_POINTS[s.grades[c]] * credits[c], 0) / total;
+    return Math.abs(gpa - s.gpa!) < 0.0015;
+  }).length;
+  return { credits, reproduced, checked: withGpa.length };
+}
+

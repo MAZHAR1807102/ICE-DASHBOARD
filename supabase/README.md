@@ -75,3 +75,18 @@ the `semester_results` table; existing data is unchanged.
 3. Exam office: Exams → **Publish Results** → **RU result sheet** → upload the PDF / Excel exactly
    as RU sends it → check the semester and course credits → Publish.
    Scanned (image-only) PDFs can't be read — use the Excel file or a PDF exported from Excel/Word.
+
+---
+
+# Running CGPA (007)
+
+Run **before** deploying the matching code — the exam page reads the new `credits_earned` column.
+
+1. Supabase → SQL Editor → run `migrations/007_cumulative_cgpa.sql`.
+2. Deploy the code.
+
+Rules it applies (F = 0.00 matches every GPA on RU's own sheets):
+- Every attempt is kept (regular, retake, improvement); for each course the **best** grade counts.
+- An F counts as 0.00 until a better attempt replaces it.
+- Exams → **Earlier results**: a starting CGPA ("through semester N, X credits, CGPA Y") for
+  semesters published before the portal. Uploaded results after semester N are added on top.
