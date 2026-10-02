@@ -1,13 +1,15 @@
-import React from 'react';
+'use client';
+
+import PortalHeader from '../../components/PortalHeader';
 
 export default function AdvisorDashboard() {
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      {/* Header Section */}
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Student Advisor Portal</h1>
-        <p className="text-gray-600">Prof. Mazharul Islam | Imperial College of Engineering</p>
-      </header>
+    <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
+      <PortalHeader title="Student Advisor Portal" accent="blue" />
+
+      <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg px-4 py-3">
+        Preview only — the numbers and students below are sample data. This portal will be connected to live records soon.
+      </div>
 
       {/* Advisee Overview Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

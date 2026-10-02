@@ -1,31 +1,47 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../utils/supabase';
-import { changePassword, getSessionUser, signOut } from '../../utils/session';
+import { getSessionUser, signOut } from '../../utils/session';
 import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../utils/eligibility';
+import type { Course, CtMark, Notice, Student } from '../../utils/types';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
-type CourseMark = {
-  course_code: string;
-  course_name: string;
-  credit: number;
-  ct1: number;
-  ct2: number;
-  ct3: number;
-  ct4: number;
-};
+type CourseMark = Pick<Course, 'course_code' | 'course_name' | 'credit'> & { ct1: number; ct2: number; ct3: number; ct4: number };
+
+// Everything the portal shows: the student's record, their semester's courses with CT marks, and notices.
+async function loadPortal(studentId: string) {
+  const { data: student } = await supabase.from('master_students').select('*').eq('id', studentId).single<Student>();
+  if (!student) return null;
+
+  const [courseRes, markRes, noticeRes] = await Promise.all([
+    supabase.from('courses').select('*').eq('semester', student.semester).order('course_code', { ascending: true }),
+    supabase.from('ct_marks').select('*').eq('student_id', studentId),
+    supabase.from('department_notices').select('*').order('created_at', { ascending: false }),
+  ]);
+
+  const marks = (markRes.data ?? []) as CtMark[];
+  const courseMarks: CourseMark[] = ((courseRes.data ?? []) as Course[]).map((course) => {
+    const m = marks.find((mark) => mark.course_code === course.course_code);
+    return {
+      course_code: course.course_code,
+      course_name: course.course_name,
+      credit: course.credit,
+      ct1: Number(m?.ct1) || 0,
+      ct2: Number(m?.ct2) || 0,
+      ct3: Number(m?.ct3) || 0,
+      ct4: Number(m?.ct4) || 0,
+    };
+  });
+
+  return { student, courseMarks, notices: (noticeRes.data ?? []) as Notice[] };
+}
 
 export default function StudentPortal() {
   const router = useRouter();
-  const [studentData, setStudentData] = useState<any>(null);
-  const [courseMarks, setCourseMarks] = useState<CourseMark[]>([]);
-  const [notices, setNotices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Editable States (Only Password remains)
+  const [portal, setPortal] = useState<Awaited<ReturnType<typeof loadPortal>>>(null);
   const [isPwdModalOpen, setIsPwdModalOpen] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
     getSessionUser().then((user) => {
@@ -33,68 +49,18 @@ export default function StudentPortal() {
         router.replace('/student-login');
         return;
       }
-      fetchProfileData(user.studentId);
-      fetchNotices();
+      loadPortal(user.studentId).then(setPortal);
     });
   }, [router]);
 
-  const fetchProfileData = async (id: string) => {
-    // 1. Fetch the main student profile
-    const { data: student } = await supabase.from('master_students').select('*').eq('id', id).single();
-    
-    if (student) {
-      setStudentData(student);
+  const handleLogout = () => signOut('/student-login');
 
-      // 2. Fetch all courses for this student's specific semester
-      const { data: courses } = await supabase.from('courses').select('*').eq('semester', student.semester).order('course_code', { ascending: true });
-      
-      // 3. Fetch all recorded CT marks for this specific student
-      const { data: marks } = await supabase.from('ct_marks').select('*').eq('student_id', id);
-
-      // 4. Combine the course list with their specific marks
-      let combinedMarks: CourseMark[] = [];
-      if (courses) {
-        combinedMarks = courses.map(course => {
-          const markRecord = marks?.find(m => m.course_code === course.course_code);
-          return {
-            course_code: course.course_code,
-            course_name: course.course_name,
-            credit: course.credit,
-            ct1: markRecord ? parseFloat(markRecord.ct1) || 0 : 0,
-            ct2: markRecord ? parseFloat(markRecord.ct2) || 0 : 0,
-            ct3: markRecord ? parseFloat(markRecord.ct3) || 0 : 0,
-            ct4: markRecord ? parseFloat(markRecord.ct4) || 0 : 0,
-          };
-        });
-      }
-      setCourseMarks(combinedMarks);
-    }
-    setLoading(false);
-  };
-
-  const fetchNotices = async () => {
-    const { data } = await supabase.from('department_notices').select('*').order('created_at', { ascending: false });
-    if (data) setNotices(data);
-  };
-
-  const handleLogout = () => {
-    signOut('/student-login');
-  };
-
-  const handleUpdatePassword = async () => {
-    if (newPassword.length < 6) return alert('Password must be at least 6 characters.');
-    const { error } = await changePassword(newPassword);
-    if (error) return alert(`Error updating password: ${error.message}`);
-    alert('Password updated successfully!');
-    setIsPwdModalOpen(false);
-    setNewPassword('');
-  };
-
-  if (loading || !studentData) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-500">Loading Profile...</div>;
+  if (!portal) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-500">Loading Profile...</div>;
+  const { student: studentData, courseMarks, notices } = portal;
 
   // --- AUTOMATED ELIGIBILITY LOGIC ---
   const totalDues = (studentData.monthly_due || 0) + (studentData.semester_due || 0) + (studentData.exam_due || 0) + (studentData.attendance_fine || 0);
-  const hasGoodAttendance = studentData.attendance_percentage >= MIN_ATTENDANCE_PERCENT;
+  const hasGoodAttendance = (studentData.attendance_percentage || 0) >= MIN_ATTENDANCE_PERCENT;
   const isFinanciallyCleared = totalDues === 0;
   const isEligible = isExamEligible({ ...studentData, total_due: totalDues });
 
@@ -240,19 +206,7 @@ export default function StudentPortal() {
         </div>
       </div>
 
-      {/* PASSWORD CHANGE MODAL */}
-      {isPwdModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
-            <h3 className="font-bold text-lg mb-4 text-slate-800">Change Student Password</h3>
-            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full border border-slate-300 p-2.5 rounded-lg mb-4 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Minimum 6 characters" />
-            <div className="flex justify-end space-x-2">
-              <button onClick={() => setIsPwdModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">Cancel</button>
-              <button onClick={handleUpdatePassword} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold transition-colors">Save</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isPwdModalOpen && <ChangePasswordModal onClose={() => setIsPwdModalOpen(false)} />}
     </div>
   );
 }

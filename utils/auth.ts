@@ -14,7 +14,6 @@ export const DASHBOARD_ACCESS: Record<string, Role[]> = {
   '/dashboard/academic': ['academic', 'hod'],
   '/dashboard/exam': ['exam', 'hod'],
   '/dashboard/advisor': ['advisor', 'hod'],
-  '/dashboard/hod': ['hod'],
 };
 
 export const ROLE_HOME: Record<Role, string> = {
