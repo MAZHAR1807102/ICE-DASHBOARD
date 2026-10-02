@@ -1,5 +1,6 @@
 import { academicStanding, formatGpa, semesterSummaries } from '../../../utils/grades';
 import type { CourseResult } from '../../../utils/types';
+import { GraduationCap } from 'lucide-react';
 import GpaChart from './GpaChart';
 import { Card, EmptyState, GradeChip } from './ui';
 
@@ -7,7 +8,7 @@ export default function ResultsTab({ results }: { results: CourseResult[] }) {
   if (results.length === 0) {
     return (
       <Card>
-        <EmptyState icon="🎓" title="No results published yet" body="Your semester results will appear here as soon as the exam office publishes them." />
+        <EmptyState icon={GraduationCap} title="No results published yet" body="Your semester results will appear here as soon as the exam office publishes them." />
       </Card>
     );
   }

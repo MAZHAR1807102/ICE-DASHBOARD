@@ -2,6 +2,7 @@ import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../../utils/eligibili
 import { semesterSummaries } from '../../../utils/grades';
 import { totalDue } from '../../../utils/types';
 import type { Profile } from './data';
+import { GraduationCap } from 'lucide-react';
 import GpaChart from './GpaChart';
 import NoticesList from './NoticesList';
 import { AttendanceBar, Card, EmptyState, taka } from './ui';
@@ -55,7 +56,7 @@ export default function OverviewTab({ profile, onOpen }: { profile: Profile; onO
         <Card title="GPA by semester" action={results.length > 0 && more('results', 'Full results')}>
           {semesters.length > 0
             ? <GpaChart points={semesters.map(({ semester, gpa, credits }) => ({ semester, gpa, credits }))} />
-            : <EmptyState icon="🎓" title="No results published yet" body="Your GPA trend will appear once semester results are published." />}
+            : <EmptyState icon={GraduationCap} title="No results published yet" body="Your GPA trend will appear once semester results are published." />}
         </Card>
 
         <Card title={`This semester's attendance`} action={courses.length > 0 && more('courses', 'Courses & CT marks')}>

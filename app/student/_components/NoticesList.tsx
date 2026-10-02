@@ -1,9 +1,10 @@
 import type { Notice } from '../../../utils/types';
+import { Megaphone, Paperclip } from 'lucide-react';
 import { EmptyState, formatDate } from './ui';
 
 export default function NoticesList({ notices, limit }: { notices: Notice[]; limit?: number }) {
   const shown = limit ? notices.slice(0, limit) : notices;
-  if (shown.length === 0) return <EmptyState icon="📢" title="No notices" body="Department announcements will show up here." />;
+  if (shown.length === 0) return <EmptyState icon={Megaphone} title="No notices" body="Department announcements will show up here." />;
 
   return (
     <ul className="divide-y divide-slate-100 -my-2">
@@ -14,7 +15,7 @@ export default function NoticesList({ notices, limit }: { notices: Notice[]; lim
           {n.description && <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{n.description}</p>}
           {n.file_url && (
             <a href={n.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-indigo-600 hover:underline">
-              📄 View attachment
+              <Paperclip className="size-3.5" aria-hidden /> View attachment
             </a>
           )}
         </li>

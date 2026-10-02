@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { Download, GraduationCap, Upload } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import { Button, inputClass } from '../../../components/ui';
+import { useConfirm, useToast } from '../../../components/Providers';
 import { supabase } from '../../../../utils/supabase';
 import { downloadCsv, parseCsv, toCsv } from '../../../../utils/csv';
 import { GRADES } from '../../../../utils/grades';
@@ -21,6 +24,8 @@ export default function PublishResultsModal({ students, onClose, onPublished }: 
   const [semester, setSemester] = useState(1);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [isWorking, setIsWorking] = useState(false);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const coursesFor = async (sem: number) => {
     const { data, error } = await supabase.from('courses').select('*').eq('semester', sem).order('course_code');
@@ -30,7 +35,7 @@ export default function PublishResultsModal({ students, onClose, onPublished }: 
 
   const handleTemplate = async () => {
     const courses = await coursesFor(semester);
-    if (courses.length === 0) return alert(`No courses are set up for semester ${semester}. Add them in the Academic portal first.`);
+    if (courses.length === 0) return toast.error(`No courses are set up for semester ${semester}. Add them in the Academic portal first.`);
     const cohort = students.filter((s) => s.semester === semester);
     const rows = cohort.flatMap((s) => courses.map((c) => [s.college_id, s.ru_id || '', s.name, c.course_code, c.course_name, c.credit, '']));
     downloadCsv(`Results_Semester_${semester}.csv`, toCsv(HEADER, rows));
@@ -71,73 +76,56 @@ export default function PublishResultsModal({ students, onClose, onPublished }: 
 
   const handlePublish = async () => {
     if (!preview || preview.rows.length === 0) return;
-    if (!window.confirm(`Publish ${preview.rows.length} results for semester ${semester}?\n\nStudents will see them immediately. Existing grades for the same course and semester are replaced.`)) return;
+    if (!(await confirm({ title: `Publish ${preview.rows.length} results for semester ${semester}?`, body: 'Students see them immediately. Existing grades for the same course and semester are replaced.', confirmLabel: 'Publish' }))) return;
 
     setIsWorking(true);
     const { error } = await supabase.from('course_results').upsert(preview.rows, { onConflict: 'student_id,semester,course_code' });
     setIsWorking(false);
-    if (error) return alert(`Results not published: ${error.message}`);
+    if (error) return toast.error(`Results not published: ${error.message}`);
     onPublished(`Published ${preview.rows.length} results for semester ${semester}.`);
   };
 
   const studentCount = preview ? new Set(preview.rows.map((r) => r.student_id)).size : 0;
 
   return (
-    <Modal title="Publish Semester Results" size="lg" onClose={onClose}>
+    <Modal title="Publish semester results" description="Students see published grades on their profile immediately." size="lg" onClose={onClose}>
       <div className="space-y-5">
-        <ol className="text-sm text-slate-600 space-y-1 list-decimal list-inside">
-          <li>Choose the semester and download the template.</li>
-          <li>Fill in the <b>Grade</b> column ({GRADES.join(', ')}). Leave it blank to skip a row.</li>
-          <li>Upload the file, check the preview, then publish.</li>
+        <ol className="space-y-2 text-sm text-slate-600">
+          {['Choose the semester and download the template.', `Fill in the Grade column (${GRADES.join(', ')}). Leave it blank to skip a row.`, 'Upload the file, check the preview, then publish.'].map((step, i) => (
+            <li key={i} className="flex gap-3"><span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700">{i + 1}</span>{step}</li>
+          ))}
         </ol>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={semester}
-            onChange={(e) => { setSemester(Number(e.target.value)); setPreview(null); }}
-            className="border border-slate-300 rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-purple-500"
-          >
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <select value={semester} onChange={(e) => { setSemester(Number(e.target.value)); setPreview(null); }} className={`${inputClass} sm:w-40`} aria-label="Semester">
             {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
           </select>
-          <button onClick={handleTemplate} className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50">⬇️ Download Template</button>
-          <label className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 cursor-pointer">
-            ⬆️ Upload Filled CSV
+          <Button variant="secondary" icon={Download} onClick={handleTemplate}>Download template</Button>
+          <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
+            <Upload className="size-4" aria-hidden /> Upload filled CSV
             <input type="file" accept=".csv" className="hidden" onChange={handleFile} />
           </label>
         </div>
 
-        {isWorking && <p className="text-sm text-slate-500">Working...</p>}
+        {isWorking && !preview && <p className="text-sm text-slate-500">Reading file…</p>}
 
         {preview && (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                <p className="text-2xl font-black text-emerald-700">{preview.rows.length}</p>
-                <p className="text-xs font-bold text-emerald-700">grades ready</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <p className="text-2xl font-black text-slate-700">{studentCount}</p>
-                <p className="text-xs font-bold text-slate-500">students</p>
-              </div>
-              <div className={`rounded-lg p-3 border ${preview.problems.length ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
-                <p className={`text-2xl font-black ${preview.problems.length ? 'text-rose-700' : 'text-slate-700'}`}>{preview.problems.length}</p>
-                <p className="text-xs font-bold text-slate-500">problems</p>
-              </div>
+              <div className="rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200"><p className="text-2xl font-bold text-emerald-700">{preview.rows.length}</p><p className="text-xs font-medium text-emerald-700">grades ready</p></div>
+              <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200"><p className="text-2xl font-bold text-slate-700">{studentCount}</p><p className="text-xs font-medium text-slate-500">students</p></div>
+              <div className={`rounded-xl p-3 ring-1 ${preview.problems.length ? 'bg-rose-50 ring-rose-200' : 'bg-slate-50 ring-slate-200'}`}><p className={`text-2xl font-bold ${preview.problems.length ? 'text-rose-700' : 'text-slate-700'}`}>{preview.problems.length}</p><p className="text-xs font-medium text-slate-500">problems</p></div>
             </div>
             {preview.skippedBlank > 0 && <p className="text-xs text-slate-500">{preview.skippedBlank} rows with no grade were skipped.</p>}
             {preview.problems.length > 0 && (
-              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 max-h-40 overflow-y-auto">
-                <p className="text-xs font-bold text-rose-800 mb-1">These rows will not be published — fix them and upload again:</p>
-                <ul className="text-xs text-rose-700 space-y-0.5">{preview.problems.map((p) => <li key={p}>{p}</li>)}</ul>
+              <div className="max-h-40 overflow-y-auto rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
+                <p className="mb-1 text-xs font-semibold text-rose-800">These rows won&apos;t be published — fix them and upload again:</p>
+                <ul className="space-y-0.5 text-xs text-rose-700">{preview.problems.map((p) => <li key={p}>{p}</li>)}</ul>
               </div>
             )}
-            <button
-              onClick={handlePublish}
-              disabled={isWorking || preview.rows.length === 0}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
-            >
-              Publish {preview.rows.length} Results
-            </button>
+            <Button icon={GraduationCap} loading={isWorking} disabled={preview.rows.length === 0} onClick={handlePublish} className="w-full">
+              Publish {preview.rows.length} results
+            </Button>
           </div>
         )}
       </div>

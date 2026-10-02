@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { downloadCsv, parseCsv, toCsv } from '../../../utils/csv';
 import { ctCount, ctMax } from '../../../utils/ct';
+import { Download, Save, Upload } from 'lucide-react';
+import { Button } from '../../components/ui';
 
 export type TeacherCourse = {
   id: string;
@@ -112,9 +114,9 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
           <p className="text-xs text-slate-500 mt-0.5">{count} CTs, each out of {max} · {complete} of {roster.length} students complete</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={handleDownload} className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50">⬇️ Download sheet</button>
-          <label className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 cursor-pointer">
-            ⬆️ Upload filled sheet
+          <Button size="sm" variant="secondary" icon={Download} onClick={handleDownload}>Download sheet</Button>
+          <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50">
+            <Upload className="size-4" aria-hidden /> Upload filled sheet
             <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleUpload} />
           </label>
         </div>
@@ -173,9 +175,7 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
           {dirtyIds.length > 0 ? <><b className="text-amber-700">{dirtyIds.length} unsaved</b> change{dirtyIds.length === 1 ? '' : 's'} · </> : 'All changes saved · '}
           Leave a box empty if that CT hasn&apos;t been held yet.
         </p>
-        <button onClick={handleSave} disabled={isSaving || dirtyIds.length === 0} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-sm disabled:opacity-40">
-          {isSaving ? 'Saving…' : 'Save marks'}
-        </button>
+        <Button icon={Save} loading={isSaving} disabled={dirtyIds.length === 0} onClick={handleSave}>Save marks</Button>
       </div>
     </div>
   );

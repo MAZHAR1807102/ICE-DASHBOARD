@@ -1,5 +1,6 @@
 import { ctAverage, ctCount, ctMax } from '../../../utils/ct';
 import type { Course, CtMark } from '../../../utils/types';
+import { BookOpen } from 'lucide-react';
 import { AttendanceBar, Card, EmptyState } from './ui';
 
 export default function CoursesTab({ semester, courses, marks }: {
@@ -12,7 +13,7 @@ export default function CoursesTab({ semester, courses, marks }: {
   if (courses.length === 0) {
     return (
       <Card>
-        <EmptyState icon="📚" title="No courses yet" body={`Courses for semester ${semester} haven't been added by the academic office yet.`} />
+        <EmptyState icon={BookOpen} title="No courses yet" body={`Courses for semester ${semester} haven't been added by the academic office yet.`} />
       </Card>
     );
   }
