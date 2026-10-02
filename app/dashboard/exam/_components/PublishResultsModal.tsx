@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, GraduationCap, Upload } from 'lucide-react';
+import { Download, FileSpreadsheet, GraduationCap, Table2, Upload } from 'lucide-react';
+import RuSheetImport from './RuSheetImport';
 import Modal from '../../../components/Modal';
-import { Button, inputClass } from '../../../components/ui';
+import { Button, Tabs, inputClass } from '../../../components/ui';
 import { useConfirm, useToast } from '../../../components/Providers';
 import { supabase } from '../../../../utils/supabase';
 import { downloadCsv, parseCsv, toCsv } from '../../../../utils/csv';
@@ -15,12 +16,34 @@ type Preview = { rows: ResultRow[]; problems: string[]; skippedBlank: number };
 
 const HEADER = ['College ID', 'RU ID', 'Name', 'Course Code', 'Course Title', 'Credit', 'Grade'];
 
-// Template rows: every student of the semester × every course of the semester; Grade left blank.
+type Roster = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester'>[];
+
+// Two ways in: RU's official sheet as received, or the app's one-row-per-grade template.
 export default function PublishResultsModal({ students, onClose, onPublished }: {
-  students: Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester'>[];
+  students: Roster;
   onClose: () => void;
   onPublished: (message: string) => void;
 }) {
+  const [mode, setMode] = useState<'sheet' | 'template'>('sheet');
+  return (
+    <Modal title="Publish semester results" description="Students see published grades on their profile immediately." size="xl" onClose={onClose}>
+      <div className="mb-5">
+        <Tabs
+          value={mode}
+          onChange={setMode}
+          tabs={[
+            { id: 'sheet', label: 'RU result sheet', icon: FileSpreadsheet },
+            { id: 'template', label: 'Simple template', icon: Table2 },
+          ]}
+        />
+      </div>
+      {mode === 'sheet' ? <RuSheetImport students={students} onPublished={onPublished} /> : <TemplateImport students={students} onPublished={onPublished} />}
+    </Modal>
+  );
+}
+
+// Template rows: every student of the semester × every course of the semester; Grade left blank.
+function TemplateImport({ students, onPublished }: { students: Roster; onPublished: (message: string) => void }) {
   const [semester, setSemester] = useState(1);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [isWorking, setIsWorking] = useState(false);
@@ -88,7 +111,6 @@ export default function PublishResultsModal({ students, onClose, onPublished }: 
   const studentCount = preview ? new Set(preview.rows.map((r) => r.student_id)).size : 0;
 
   return (
-    <Modal title="Publish semester results" description="Students see published grades on their profile immediately." size="lg" onClose={onClose}>
       <div className="space-y-5">
         <ol className="space-y-2 text-sm text-slate-600">
           {['Choose the semester and download the template.', `Fill in the Grade column (${GRADES.join(', ')}). Leave it blank to skip a row.`, 'Upload the file, check the preview, then publish.'].map((step, i) => (
@@ -129,6 +151,5 @@ export default function PublishResultsModal({ students, onClose, onPublished }: 
           </div>
         )}
       </div>
-    </Modal>
   );
 }
