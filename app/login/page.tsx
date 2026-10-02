@@ -100,6 +100,9 @@ export default function LoginPage() {
               {isLoading ? 'Authenticating...' : 'Secure Sign In'}
             </button>
           </form>
+          <p className="mt-6 text-center text-sm text-slate-500">
+            Course teacher entering CT marks? <a href="/teacher-login" className="font-bold text-indigo-600 hover:underline">Sign in here</a>
+          </p>
         </div>
       </div>
     </div>

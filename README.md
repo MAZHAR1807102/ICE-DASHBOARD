@@ -12,9 +12,11 @@ Built with Next.js 16 (App Router), React 19, Tailwind CSS 4 and Supabase.
 | `academic` | `/dashboard/academic` | Students, courses, attendance, CT marks, notices, student logins |
 | `exam` | `/dashboard/exam` | Exam registration status, automatic eligibility check |
 | `advisor` | `/dashboard/advisor` | Advisee overview (preview — sample data for now) |
-| student | `/student` | Own marks, attendance, dues, notices |
+| `teacher` | `/teacher` | CT marks for the courses they teach (signs in with an emailed link) |
+| student | `/student` | Own results, CT marks, attendance, payments, notices |
 
-Faculty sign in at `/login` with their email; students at `/student-login` with their RU ID.
+Faculty sign in at `/login` with their email; students at `/student-login` with their RU ID;
+course teachers at `/teacher-login`, which emails them a one-time sign-in link.
 
 ## Running locally
 

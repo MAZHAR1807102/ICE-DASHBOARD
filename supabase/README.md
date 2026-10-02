@@ -48,3 +48,17 @@ Safe to run any time — it only adds a new table; nothing existing changes.
    fill the Grade column (A+, A, A-, B+, B, B-, C+, C, D, F) → upload → check the preview → Publish.
 
 CGPA and backlogs on each student update automatically from the latest attempt of every course.
+
+---
+
+# Teacher portal (005)
+
+Safe to run any time — adds two columns to `courses` and three functions; nothing else changes.
+
+1. Supabase → SQL Editor → run `migrations/005_teacher_portal.sql`.
+2. Recommended: Supabase → Authentication → **Email** → set "Email OTP Expiration" to `86400`
+   (24 hours) so emailed sign-in links stay valid for a day. Teachers can always request a new
+   link at `/teacher-login`.
+3. Deploy the code.
+4. Academic office: Academic → Curriculum & Faculty → make sure each course has the teacher's
+   email → pick the semester → **📧 Email CT links to teachers** (or **Send link** on one course).

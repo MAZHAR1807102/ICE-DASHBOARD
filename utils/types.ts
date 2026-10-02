@@ -35,6 +35,8 @@ export type Course = {
   teacher_name: string | null;
   teacher_email: string | null;
   attendance_sheet_url: string | null;
+  ct_saved_at?: string | null; // set when the course teacher saves CT marks (migration 005)
+  ct_saved_by?: string | null;
 };
 
 export type CtMark = {

@@ -1,8 +1,11 @@
 // Shared auth vocabulary used by the proxy, API routes, login pages and dashboards.
 
-export type Role = 'hod' | 'finance' | 'academic' | 'exam' | 'advisor' | 'student';
+export type Role = 'hod' | 'finance' | 'academic' | 'exam' | 'advisor' | 'teacher' | 'student';
 
 export const FACULTY_ROLES: Role[] = ['hod', 'finance', 'academic', 'exam', 'advisor'];
+
+// Course teachers sign in by emailed link; office staff who also teach can use the portal too.
+export const TEACHER_PORTAL_ROLES: Role[] = ['teacher', ...FACULTY_ROLES];
 
 // Students log in with their RU ID; Supabase Auth needs an email, so we map it to an internal one.
 export const STUDENT_EMAIL_DOMAIN = 'students.ice-portal.local';
@@ -22,6 +25,7 @@ export const ROLE_HOME: Record<Role, string> = {
   academic: '/dashboard/academic',
   exam: '/dashboard/exam',
   advisor: '/dashboard/advisor',
+  teacher: '/teacher',
   student: '/student',
 };
 
