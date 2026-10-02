@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../utils/supabase';
+import { changePassword, getSessionUser, signOut } from '../../../utils/session';
 import { useRouter } from 'next/navigation';
 
 type ExamStudent = {
@@ -35,13 +36,7 @@ export default function ExaminationDashboard() {
   // --- INITIALIZATION ---
   useEffect(() => {
     // Fetch logged-in session data
-    const session = localStorage.getItem('faculty_user');
-    if (session) {
-      const user = JSON.parse(session);
-      setTeacherName(user.name);
-    } else {
-      router.replace('/login');
-    }
+    getSessionUser().then((user) => setTeacherName(user?.name ?? ''));
     
     fetchExamData();
   }, [router]);
@@ -57,8 +52,7 @@ export default function ExaminationDashboard() {
 
   // --- AUTHENTICATION ACTIONS ---
   const handleLogout = () => {
-    localStorage.removeItem('faculty_user');
-    router.replace('/login');
+    signOut('/login');
   };
 
   const handleUpdatePassword = async () => {
@@ -67,22 +61,14 @@ export default function ExaminationDashboard() {
     }
     
     setIsUpdatingPassword(true);
-    const session = localStorage.getItem('faculty_user');
-    
-    if (session) {
-      const user = JSON.parse(session);
-      const { error } = await supabase
-        .from('faculty_users')
-        .update({ password: newPassword })
-        .eq('email', user.email);
+    const { error } = await changePassword(newPassword);
 
-      if (!error) {
-        alert('Password updated successfully!');
-        setIsPasswordModalOpen(false);
-        setNewPassword('');
-      } else {
-        alert(`Error updating password: ${error.message}`);
-      }
+    if (!error) {
+      alert('Password updated successfully!');
+      setIsPasswordModalOpen(false);
+      setNewPassword('');
+    } else {
+      alert(`Error updating password: ${error.message}`);
     }
     setIsUpdatingPassword(false);
   };

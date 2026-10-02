@@ -1,40 +1,36 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
 import { supabase } from '../../utils/supabase';
+import { roleFromMetadata, studentEmail } from '../../utils/auth';
 
 export default function StudentLogin() {
-  const router = useRouter();
   const [ruId, setRuId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (localStorage.getItem('student_user')) router.replace('/student');
-  }, [router]);
+  // Already-signed-in visitors are redirected away from this page by proxy.ts.
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    const { data: student, error: dbError } = await supabase
-      .from('master_students')
-      .select('id, name, ru_id, semester')
-      .eq('ru_id', ruId)
-      .eq('student_password', password)
-      .single();
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: studentEmail(ruId),
+      password,
+    });
 
-    if (dbError || !student) {
+    if (authError || roleFromMetadata(data.user?.app_metadata) !== 'student') {
+      if (data.session) await supabase.auth.signOut();
       setError('Invalid RU ID or Password.');
       setIsLoading(false);
       return;
     }
 
-    localStorage.setItem('student_user', JSON.stringify(student));
-    router.replace('/student');
+    // Full navigation so the proxy sees the new session cookie.
+    window.location.replace('/student');
   };
 
   return (

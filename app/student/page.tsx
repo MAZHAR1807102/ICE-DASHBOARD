@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../utils/supabase';
+import { changePassword, getSessionUser, signOut } from '../../utils/session';
 
 type CourseMark = {
   course_code: string;
@@ -26,14 +27,14 @@ export default function StudentPortal() {
   const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
-    const session = localStorage.getItem('student_user');
-    if (!session) {
-      router.replace('/student-login');
-      return;
-    }
-    const user = JSON.parse(session);
-    fetchProfileData(user.id);
-    fetchNotices();
+    getSessionUser().then((user) => {
+      if (!user?.studentId) {
+        router.replace('/student-login');
+        return;
+      }
+      fetchProfileData(user.studentId);
+      fetchNotices();
+    });
   }, [router]);
 
   const fetchProfileData = async (id: string) => {
@@ -76,13 +77,13 @@ export default function StudentPortal() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('student_user');
-    router.replace('/student-login');
+    signOut('/student-login');
   };
 
   const handleUpdatePassword = async () => {
     if (newPassword.length < 6) return alert('Password must be at least 6 characters.');
-    await supabase.from('master_students').update({ student_password: newPassword }).eq('id', studentData.id);
+    const { error } = await changePassword(newPassword);
+    if (error) return alert(`Error updating password: ${error.message}`);
     alert('Password updated successfully!');
     setIsPwdModalOpen(false);
     setNewPassword('');

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../utils/supabase';
-import { useRouter } from 'next/navigation';
+import { changePassword, getSessionUser, signOut } from '../../../utils/session';
 
 type AcademicStudent = {
   id: string;
@@ -31,7 +31,6 @@ type Course = {
 
 export default function AcademicDashboard() {
 
-  const router = useRouter();
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -68,11 +67,7 @@ export default function AcademicDashboard() {
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    const session = localStorage.getItem('faculty_user');
-    if (session) {
-      const user = JSON.parse(session);
-      setTeacherName(user.name);
-    }
+    getSessionUser().then((user) => setTeacherName(user?.name ?? ''));
     fetchData();
   }, [activeTab, selectedCourseCode]);
 
@@ -134,20 +129,15 @@ export default function AcademicDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('faculty_user');
-    router.replace('/login');
+    signOut('/login');
   };
 
   const handleUpdatePassword = async () => {
     if (!newPassword || newPassword.length < 6) return alert('Password must be at least 6 characters long.');
     setIsUpdatingPassword(true);
-    const session = localStorage.getItem('faculty_user');
-    if (session) {
-      const user = JSON.parse(session);
-      const { error } = await supabase.from('faculty_users').update({ password: newPassword }).eq('email', user.email);
-      if (!error) { alert('Password updated successfully!'); setIsPasswordModalOpen(false); setNewPassword(''); } 
-      else { alert(`Error updating password: ${error.message}`); }
-    }
+    const { error } = await changePassword(newPassword);
+    if (!error) { alert('Password updated successfully!'); setIsPasswordModalOpen(false); setNewPassword(''); } 
+    else { alert(`Error updating password: ${error.message}`); }
     setIsUpdatingPassword(false);
   };   
 
@@ -185,6 +175,20 @@ export default function AcademicDashboard() {
       if (!error) { showMessage('Student updated successfully.'); setModalConfig({ isOpen: false, type: null, targetId: null }); fetchData(); } 
       else showMessage(`Error: ${error.message}`);
     }
+  };
+
+  const handleSetStudentLogin = async (student: AcademicStudent) => {
+    const password = window.prompt(`Set a portal password for ${student.name} (RU ID ${student.ru_id || 'not set'}).\nMinimum 6 characters:`);
+    if (password === null) return;
+    if (password.length < 6) return alert('Password must be at least 6 characters long.');
+
+    const response = await fetch('/api/students/set-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId: student.id, password }),
+    });
+    const result = await response.json();
+    showMessage(response.ok ? result.message : `Error: ${result.error}`);
   };
 
   const handleDeleteStudent = async (id: string, name: string) => {
@@ -539,6 +543,7 @@ export default function AcademicDashboard() {
 
                         <td className="p-3 text-sm text-center">
                             <button onClick={() => openModal('edit_student', student)} className="text-indigo-600 hover:text-indigo-800 font-bold text-xs mx-2">Edit</button>
+                            <button onClick={() => handleSetStudentLogin(student)} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs mx-2">Set Login</button>
                             <button onClick={() => handleDeleteStudent(student.id, student.name)} className="text-rose-600 hover:text-rose-800 font-bold text-xs mx-2">Delete</button>
                         </td>
                       </tr>

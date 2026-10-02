@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabase';
+import { getSessionUser, signOut } from '../../utils/session';
 
 export default function DashboardRoot() {
   const router = useRouter();
@@ -21,28 +22,28 @@ export default function DashboardRoot() {
   });
 
   useEffect(() => {
-    const session = localStorage.getItem('faculty_user');
-    if (!session) {
-      router.replace('/login');
-      return;
-    }
+    getSessionUser().then((user) => {
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
 
-    const user = JSON.parse(session);
-    setUserRole(user.role);
-    setUserName(user.name);
+      setUserRole(user.role ?? null);
+      setUserName(user.name);
 
-    // Auto-Redirect Faculty to their specific workspaces
-    if (user.role === 'finance') {
-      router.replace('/dashboard/studAff');
-    } else if (user.role === 'academic') {
-      router.replace('/dashboard/academic');
-    } else if (user.role === 'exam') {
-      router.replace('/dashboard/exam');
-    } else if (user.role === 'advisor') {
-      router.replace('/dashboard/advisor');
-    } else if (user.role === 'hod') {
-      fetchHODMetrics();
-    }
+      // Auto-Redirect Faculty to their specific workspaces
+      if (user.role === 'finance') {
+        router.replace('/dashboard/studAff');
+      } else if (user.role === 'academic') {
+        router.replace('/dashboard/academic');
+      } else if (user.role === 'exam') {
+        router.replace('/dashboard/exam');
+      } else if (user.role === 'advisor') {
+        router.replace('/dashboard/advisor');
+      } else if (user.role === 'hod') {
+        fetchHODMetrics();
+      }
+    });
   }, [router]);
 
   const fetchHODMetrics = async () => {
@@ -98,10 +99,7 @@ export default function DashboardRoot() {
         </div>
         
         <button 
-          onClick={() => {
-            localStorage.removeItem('faculty_user');
-            router.push('/login');
-          }}
+          onClick={() => signOut('/login')}
           className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
         >
           End Session
