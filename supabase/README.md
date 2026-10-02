@@ -116,3 +116,16 @@ Exams → **Results** (on any student): edit a grade / credit / course code / se
 course result, edit or delete the official figures. Every change asks for a reason and is kept in
 `result_changes` (who, when, before → after, reason) — nobody can edit or delete that history.
 Rename / Remove in **Published results** are recorded the same way.
+
+---
+
+# Roll sheets (010)
+
+Run **before** deploying the matching code — the roll sheet and student form use the new columns.
+
+1. Supabase → SQL Editor → run `migrations/010_roll_sheets.sql`.
+2. Deploy the code.
+3. Academic → **Import details** → upload each existing roll sheet (.docx) to fill in Bangla names,
+   parents' names and sessions. Old .doc files: open in Word → Save As → .docx first.
+4. Exams → **Roll sheet** → semester + exam year → check / save the subject list (add lab titles
+   once) → check the students → Download (Word).

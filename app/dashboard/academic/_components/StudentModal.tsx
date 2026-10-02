@@ -6,9 +6,10 @@ import { supabase } from '../../../../utils/supabase';
 import { SEMESTERS, type Student } from '../../../../utils/types';
 import Modal from '../../../components/Modal';
 import { Button, Field, inputClass } from '../../../components/ui';
+import { sessionOf } from '../../../../utils/rollsheet';
 
 // Only these fields are edited here — balances are managed by the finance ledger.
-const EDITABLE = ['college_id', 'ru_id', 'name', 'semester', 'advisor', 'student_contact', 'guardian_contact'] as const;
+const EDITABLE = ['college_id', 'ru_id', 'name', 'semester', 'advisor', 'student_contact', 'guardian_contact', 'name_bn', 'mother_name', 'father_name', 'session'] as const;
 type StudentForm = Partial<Pick<Student, (typeof EDITABLE)[number]>>;
 
 export default function StudentModal({ student, defaultSemester, onClose, onSaved }: {
@@ -55,6 +56,17 @@ export default function StudentModal({ student, defaultSemester, onClose, onSave
           {field('advisor', 'Advisor')}
           {field('student_contact', 'Student phone')}
           {field('guardian_contact', 'Guardian phone')}
+        </div>
+        <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+          <p className="mb-3 text-sm font-semibold text-slate-900">Printed on RU roll sheets</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {field('name_bn', 'Name in Bangla', false, true)}
+            {field('mother_name', "Mother's name")}
+            {field('father_name', "Father's name")}
+            <Field label="Session" hint={`Leave blank to use ${sessionOf({ ru_id: form.ru_id ?? null }) || 'the one from the RU ID'}`}>
+              <input type="text" value={form.session || ''} onChange={(e) => setForm({ ...form, session: e.target.value })} className={inputClass} placeholder={sessionOf({ ru_id: form.ru_id ?? null }) || 'e.g. 2024-25'} />
+            </Field>
+          </div>
         </div>
         {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>}
         <Button type="submit" icon={Save} loading={isSaving} className="w-full">{student ? 'Save changes' : 'Add student'}</Button>
