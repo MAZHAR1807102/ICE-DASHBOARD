@@ -1,11 +1,14 @@
 import { academicStanding, formatGpa, semesterSummaries } from '../../../utils/grades';
-import type { CourseResult } from '../../../utils/types';
+import type { CourseResult, SemesterResult } from '../../../utils/types';
+import { Badge } from '../../components/ui';
 import { GraduationCap } from 'lucide-react';
 import GpaChart from './GpaChart';
 import { Card, EmptyState, GradeChip } from './ui';
 
-export default function ResultsTab({ results }: { results: CourseResult[] }) {
-  if (results.length === 0) {
+const STATUS_TONE: Record<string, 'emerald' | 'amber' | 'rose'> = { pass: 'emerald', cond: 'amber', fail: 'rose' };
+
+export default function ResultsTab({ results, official }: { results: CourseResult[]; official: SemesterResult[] }) {
+  if (results.length === 0 && official.length === 0) {
     return (
       <Card>
         <EmptyState icon={GraduationCap} title="No results published yet" body="Your semester results will appear here as soon as the exam office publishes them." />
@@ -13,7 +16,7 @@ export default function ResultsTab({ results }: { results: CourseResult[] }) {
     );
   }
 
-  const semesters = semesterSummaries(results);
+  const semesters = semesterSummaries(results, official);
   const standing = academicStanding(results);
 
   return (
@@ -37,13 +40,22 @@ export default function ResultsTab({ results }: { results: CourseResult[] }) {
           key={s.semester}
           title={`Semester ${s.semester}`}
           action={
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-slate-500">{s.earned}/{s.credits} credits</span>
-              <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-black text-indigo-700">GPA {formatGpa(s.gpa)}</span>
+            <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
+              {s.official?.result_status && <Badge tone={STATUS_TONE[s.official.result_status.toLowerCase()] ?? 'slate'} dot>{s.official.result_status === 'Cond' ? 'Conditional' : s.official.result_status}</Badge>}
+              {s.official?.merit_position && <Badge tone="violet">Merit #{s.official.merit_position}</Badge>}
+              <span className="text-slate-500">{s.earned}{s.credits ? `/${s.credits}` : ''} credits</span>
+              <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-black text-indigo-700">GPA {s.official?.gpa != null ? Number(s.official.gpa).toFixed(3) : formatGpa(s.gpa)}</span>
             </div>
           }
         >
-          <div className="overflow-x-auto -mx-1">
+          {s.official && (s.official.ygpa != null || s.official.exam_title) && (
+            <p className="mb-3 text-xs text-slate-500">
+              {s.official.exam_title}{s.official.exam_title && s.official.ygpa != null ? ' · ' : ''}
+              {s.official.ygpa != null && <>Year GPA <b className="text-slate-700">{Number(s.official.ygpa).toFixed(3)}</b>{s.official.year_earned_credits != null && ` (${Number(s.official.year_earned_credits)} credits this year)`}</>}
+            </p>
+          )}
+          {s.results.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No course grades for this semester — absent or withheld.</p>}
+          {s.results.length > 0 && <div className="overflow-x-auto -mx-1">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
@@ -67,7 +79,7 @@ export default function ResultsTab({ results }: { results: CourseResult[] }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
         </Card>
       ))}
     </div>
