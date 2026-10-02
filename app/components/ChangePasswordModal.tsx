@@ -1,47 +1,45 @@
 'use client';
 
 import { useState } from 'react';
+import { KeyRound } from 'lucide-react';
 import Modal from './Modal';
+import { Button, Field, inputClass } from './ui';
+import { useToast } from './Providers';
 import { changePassword } from '../../utils/session';
 
 export default function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = async () => {
-    if (newPassword.length < 6) return alert('Password must be at least 6 characters long.');
+  const tooShort = newPassword.length > 0 && newPassword.length < 6;
+  const mismatch = confirmPassword.length > 0 && confirmPassword !== newPassword;
 
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6 || newPassword !== confirmPassword) return;
     setIsSaving(true);
     const { error } = await changePassword(newPassword);
     setIsSaving(false);
-
-    if (error) return alert(`Error updating password: ${error.message}`);
-    alert('Password updated successfully!');
+    if (error) return toast.error(`Password not changed: ${error.message}`);
+    toast.success('Password updated.');
     onClose();
   };
 
   return (
-    <Modal title="Change Password" size="sm" onClose={onClose}>
-      <div className="space-y-4">
-        <p className="text-xs text-slate-500">Update the password for your account. This takes effect immediately.</p>
-        <div>
-          <label className="block text-sm font-bold text-slate-700 mb-1">New Password</label>
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Minimum 6 characters"
-            className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-800"
-          />
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {isSaving ? 'Updating...' : 'Confirm Password Change'}
-        </button>
-      </div>
+    <Modal title="Change password" description="Takes effect immediately on all your devices." size="sm" onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4">
+        <Field label="New password" hint={tooShort ? 'Use at least 6 characters.' : undefined}>
+          <input type="password" autoFocus value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputClass} autoComplete="new-password" />
+        </Field>
+        <Field label="Confirm new password" hint={mismatch ? "The passwords don't match." : undefined}>
+          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass} autoComplete="new-password" />
+        </Field>
+        <Button type="submit" icon={KeyRound} loading={isSaving} disabled={newPassword.length < 6 || newPassword !== confirmPassword} className="w-full">
+          Update password
+        </Button>
+      </form>
     </Modal>
   );
 }

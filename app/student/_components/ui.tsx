@@ -19,15 +19,7 @@ export function Card({ title, action, children, className = '' }: {
   );
 }
 
-export function EmptyState({ icon, title, body }: { icon: string; title: string; body: string }) {
-  return (
-    <div className="flex flex-col items-center text-center py-10 px-4">
-      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-xl mb-3" aria-hidden>{icon}</div>
-      <p className="font-bold text-slate-800">{title}</p>
-      <p className="text-sm text-slate-500 mt-1 max-w-sm">{body}</p>
-    </div>
-  );
-}
+export { EmptyState } from '../../components/ui';
 
 // Letter grade with its tier tint; the letter itself always carries the meaning.
 export function GradeChip({ grade }: { grade: string }) {

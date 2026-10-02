@@ -1,8 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AlertCircle, LogIn } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
 import { roleFromMetadata, studentEmail } from '../../utils/auth';
+import AuthLayout from '../components/AuthLayout';
+import { Button, Field, inputClass } from '../components/ui';
 
 export default function StudentLogin() {
   const [ruId, setRuId] = useState('');
@@ -24,7 +27,7 @@ export default function StudentLogin() {
 
     if (authError || roleFromMetadata(data.user?.app_metadata) !== 'student') {
       if (data.session) await supabase.auth.signOut();
-      setError('Invalid RU ID or Password.');
+      setError('Invalid RU ID or password.');
       setIsLoading(false);
       return;
     }
@@ -34,31 +37,27 @@ export default function StudentLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="w-20 h-20 bg-indigo-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg text-xl font-black">ICE</div>
-        <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Student Portal</h2>
-        <p className="mt-2 text-sm text-slate-600">Department of CSE</p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-10 shadow-xl rounded-xl border border-slate-100">
-          <form className="space-y-6" onSubmit={handleLogin}>
-            {error && <div className="bg-rose-50 text-rose-700 p-3 rounded-md text-sm font-bold">{error}</div>}
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">RU ID</label>
-              <input type="text" required value={ruId} onChange={(e) => setRuId(e.target.value)} className="w-full px-4 py-3 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. 2538520145" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Password</label>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••••••" />
-            </div>
-            <button type="submit" disabled={isLoading} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors shadow-md">
-              {isLoading ? 'Authenticating...' : 'Access Profile'}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
+    <AuthLayout
+      title="Everything about your studies, in one place."
+      subtitle="Student sign in"
+      accent="from-violet-600 via-indigo-600 to-indigo-700"
+      highlights={['Results history and CGPA', 'CT marks and attendance for every course', 'Fees, payments and receipts']}
+      footer="Forgot your password? Ask the academic office to reset it."
+    >
+      <form className="space-y-5" onSubmit={handleLogin}>
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 ring-1 ring-rose-200" role="alert">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}
+          </div>
+        )}
+        <Field label="RU ID">
+          <input type="text" inputMode="numeric" required value={ruId} onChange={(e) => setRuId(e.target.value)} className={`${inputClass} h-11 tracking-wide`} placeholder="e.g. 2538520145" />
+        </Field>
+        <Field label="Password">
+          <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputClass} h-11`} />
+        </Field>
+        <Button type="submit" size="lg" icon={LogIn} loading={isLoading} className="w-full">Open my profile</Button>
+      </form>
+    </AuthLayout>
   );
 }

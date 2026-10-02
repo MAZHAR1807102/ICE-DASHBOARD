@@ -1,25 +1,26 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Ban, CheckCircle2, Clock, FileBadge, GraduationCap, ScanSearch, Search, Users } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
 import { SEMESTERS, type Student } from '../../../utils/types';
-import PortalHeader from '../../components/PortalHeader';
+import { Badge, Button, Card, EmptyState, PageHeader, StatCard, inputClass, table } from '../../components/ui';
+import { useConfirm, useToast } from '../../components/Providers';
 import PublishResultsModal from './_components/PublishResultsModal';
 
 type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage'>;
 
-const STATUS_STYLE: Record<string, string> = {
-  Done: 'bg-green-100 text-green-800',
-  Blocked: 'bg-red-100 text-red-800',
-};
+const STATUS_TONE = { Done: 'emerald', Blocked: 'rose', Pending: 'amber' } as const;
 
 export default function ExaminationDashboard() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [students, setStudents] = useState<ExamStudent[]>([]);
   const [selectedSemester, setSelectedSemester] = useState('All');
+  const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
-  const [message, setMessage] = useState('');
   const [isPublishOpen, setIsPublishOpen] = useState(false);
 
   const fetchExamData = useCallback(() =>
@@ -39,13 +40,18 @@ export default function ExaminationDashboard() {
     setUpdatingId(id);
     const { error } = await supabase.from('master_students').update({ exam_reg_status: status }).eq('id', id);
     setUpdatingId(null);
-    if (error) return alert('Failed to update status');
+    if (error) return toast.error('Status not updated.');
     fetchExamData();
   };
 
   const handleCheckEligibility = async () => {
+    const ok = await confirm({
+      title: 'Run the eligibility check?',
+      body: `Students in ${selectedSemester === 'All' ? 'all semesters' : `semester ${selectedSemester}`} with attendance below ${MIN_ATTENDANCE_PERCENT}% or unpaid dues are marked Blocked, unless the academic office has approved an override.`,
+      confirmLabel: 'Run check',
+    });
+    if (!ok) return;
     setIsChecking(true);
-    setMessage('Cross-referencing fees and attendance...');
     try {
       const response = await fetch('/api/exams/check-eligibility', {
         method: 'POST',
@@ -53,117 +59,116 @@ export default function ExaminationDashboard() {
         body: JSON.stringify({ semester: selectedSemester }),
       });
       const result = await response.json();
-      setMessage(response.ok ? result.message : result.error || result.message || 'Check failed.');
-      if (response.ok) fetchExamData();
+      if (response.ok) { toast.success(result.message); fetchExamData(); }
+      else toast.error(result.error || result.message || 'Check failed.');
     } catch {
-      setMessage('Server error.');
+      toast.error('Server error.');
     } finally {
       setIsChecking(false);
-      setTimeout(() => setMessage(''), 5000);
     }
   };
 
-  const displayedStudents = selectedSemester === 'All' ? students : students.filter((s) => s.semester.toString() === selectedSemester);
-  const countBy = (status: string) => displayedStudents.filter((s) => s.exam_reg_status === status).length;
-
-  const cards = [
-    { title: 'Total Candidates', value: displayedStudents.length, style: 'border-blue-500 text-gray-900' },
-    { title: 'Reg. Completed', value: countBy('Done'), style: 'border-green-500 text-green-700' },
-    { title: 'Incomplete Reg.', value: countBy('Pending'), style: 'border-yellow-500 text-yellow-700' },
-    { title: 'Eligibility Issues', value: countBy('Blocked'), style: 'border-red-500 text-red-700', note: 'Blocked by System/HOD' },
-  ];
+  const query = search.toLowerCase();
+  const displayedStudents = students.filter((s) =>
+    (selectedSemester === 'All' || s.semester.toString() === selectedSemester) &&
+    (!query || s.name.toLowerCase().includes(query) || s.college_id.includes(search) || (s.ru_id ?? '').includes(search)),
+  );
+  const countBy = (status: string) => displayedStudents.filter((s) => (s.exam_reg_status || 'Pending') === status).length;
 
   return (
-    <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
-      <PortalHeader title="Examination & Assessment" accent="purple" />
+    <>
+      <PageHeader
+        title="Examination & Assessment"
+        description="Registration status, eligibility and semester results."
+        actions={<>
+          <Button variant="secondary" icon={ScanSearch} loading={isChecking} onClick={handleCheckEligibility}>Auto-check eligibility</Button>
+          <Button icon={GraduationCap} onClick={() => setIsPublishOpen(true)}>Publish Results</Button>
+        </>}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        {cards.map((card) => (
-          <div key={card.title} className={`bg-white rounded-lg shadow p-6 border-t-4 ${card.style}`}>
-            <h3 className="text-sm font-medium text-gray-500 mb-1">{card.title}</h3>
-            <p className="text-2xl font-bold">{card.value}</p>
-            {card.note && <p className="text-xs text-gray-500 mt-1">{card.note}</p>}
-          </div>
-        ))}
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Total Candidates" value={displayedStudents.length} icon={Users} tone="indigo" />
+        <StatCard label="Registration verified" value={countBy('Done')} icon={CheckCircle2} tone="emerald" />
+        <StatCard label="Pending" value={countBy('Pending')} icon={Clock} tone="amber" />
+        <StatCard label="Blocked" value={countBy('Blocked')} hint="By the system or the HOD" icon={Ban} tone="rose" />
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 border border-gray-200 mb-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-800">Exam Registration Ledger</h2>
-            {message && <p className="text-sm text-green-600 mt-1">{message}</p>}
+            <p className="font-semibold text-slate-900">Exam Registration Ledger</p>
+            <p className="text-sm text-slate-500">Change a student&apos;s status with the selector on the right.</p>
           </div>
-          <div className="flex items-center space-x-3">
-            <label htmlFor="semester-filter" className="text-sm font-medium text-gray-700">Filter Batch:</label>
-            <select id="semester-filter" value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className="border border-gray-300 rounded-md p-2 text-sm text-gray-700 bg-white">
-              <option value="All">All Semesters</option>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative sm:w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
+              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID" className={`${inputClass} pl-9`} />
+            </div>
+            <select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={`${inputClass} sm:w-40`} aria-label="Semester">
+              <option value="All">All semesters</option>
               {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
             </select>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-50 rounded-md border border-gray-100">
-          <span className="text-sm font-medium text-gray-600 mr-2 self-center">Exam Workflows:</span>
-          <button onClick={handleCheckEligibility} disabled={isChecking} className="px-4 py-2 rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 shadow-sm disabled:bg-gray-400">
-            {isChecking ? 'Checking...' : '🔍 Auto-Check Eligibility'}
-          </button>
-          <button disabled title="Coming soon" className="px-4 py-2 rounded text-sm font-medium text-gray-500 bg-gray-200 cursor-not-allowed">📄 Generate Admit Cards (coming soon)</button>
-          <button onClick={() => setIsPublishOpen(true)} className="px-4 py-2 rounded text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 shadow-sm">📊 Publish Results</button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-100 border-b">
-                {['College ID', 'RU ID', 'Name', 'Attendance', 'Exam Reg.', 'Backlogs', 'Internal Marks', 'Actions'].map((h) => (
-                  <th key={h} className="p-3 text-sm font-medium text-gray-600">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayedStudents.map((student) => {
-                const attendance = student.attendance_percentage || 0;
-                const status = student.exam_reg_status || 'Pending';
-                return (
-                  <tr key={student.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 text-sm text-gray-900">{student.college_id}</td>
-                    <td className="p-3 text-sm text-gray-900">{student.ru_id || 'N/A'}</td>
-                    <td className="p-3 text-sm font-medium text-gray-900">{student.name}</td>
-                    <td className="p-3 text-sm">
-                      <span className={`font-medium ${attendance < MIN_ATTENDANCE_PERCENT ? 'text-red-600' : 'text-green-600'}`}>{attendance}%</span>
-                    </td>
-                    <td className="p-3 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${STATUS_STYLE[status] ?? 'bg-yellow-100 text-yellow-800'}`}>{status}</span>
-                    </td>
-                    <td className="p-3 text-sm text-gray-900">{student.backlogs ?? 0}</td>
-                    <td className="p-3 text-sm">
-                      <span className={`font-medium ${student.internal_marks_status === 'Submitted' ? 'text-green-600' : 'text-yellow-600'}`}>{student.internal_marks_status}</span>
-                    </td>
-                    <td className="p-3 text-sm">
-                      <select value={status} disabled={updatingId === student.id} onChange={(e) => updateExamStatus(student.id, e.target.value)} className="text-xs border border-gray-300 rounded p-1 bg-white text-gray-900">
-                        <option value="Pending">Set Pending</option>
-                        <option value="Done">Verify Form</option>
-                        <option value="Blocked">Block Student</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-              {displayedStudents.length === 0 && (
-                <tr><td colSpan={8} className="p-6 text-center text-gray-500 text-sm">No students found for this semester.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {displayedStudents.length === 0 ? (
+          <EmptyState icon={FileBadge} title="No students found" />
+        ) : (
+          <div className={table.wrap}>
+            <table className={table.table}>
+              <thead className={table.head}>
+                <tr>
+                  <th className={table.th}>Student</th>
+                  <th className={`${table.th} text-center`}>Attendance</th>
+                  <th className={`${table.th} text-center`}>Backlogs</th>
+                  <th className={table.th}>Internal marks</th>
+                  <th className={table.th}>Registration</th>
+                  <th className={`${table.th} text-right`}>Set status</th>
+                </tr>
+              </thead>
+              <tbody className={table.body}>
+                {displayedStudents.map((student) => {
+                  const attendance = student.attendance_percentage || 0;
+                  const status = (student.exam_reg_status || 'Pending') as keyof typeof STATUS_TONE;
+                  return (
+                    <tr key={student.id} className={table.row}>
+                      <td className={table.td}>
+                        <p className="font-medium text-slate-900">{student.name}</p>
+                        <p className="text-xs text-slate-500">{student.college_id} · RU {student.ru_id || '—'} · Sem {student.semester}</p>
+                      </td>
+                      <td className={`${table.td} text-center`}><Badge tone={attendance < MIN_ATTENDANCE_PERCENT ? 'rose' : 'emerald'}>{attendance}%</Badge></td>
+                      <td className={`${table.td} text-center tabular-nums ${(student.backlogs || 0) > 0 ? 'font-semibold text-rose-600' : 'text-slate-400'}`}>{student.backlogs || 0}</td>
+                      <td className={table.td}><Badge tone={student.internal_marks_status === 'Submitted' ? 'emerald' : 'slate'}>{student.internal_marks_status || 'Pending'}</Badge></td>
+                      <td className={table.td}><Badge tone={STATUS_TONE[status] ?? 'amber'} dot>{status === 'Done' ? 'Verified' : status}</Badge></td>
+                      <td className={`${table.td} text-right`}>
+                        <select
+                          value={status}
+                          disabled={updatingId === student.id}
+                          onChange={(e) => updateExamStatus(student.id, e.target.value)}
+                          className={`${inputClass} ml-auto h-8 w-36 py-0 text-xs`}
+                          aria-label={`Registration status for ${student.name}`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Done">Verified</option>
+                          <option value="Blocked">Blocked</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       {isPublishOpen && (
         <PublishResultsModal
           students={students}
           onClose={() => setIsPublishOpen(false)}
-          onPublished={(msg) => { setIsPublishOpen(false); setMessage(msg); fetchExamData(); setTimeout(() => setMessage(''), 5000); }}
+          onPublished={(msg) => { setIsPublishOpen(false); toast.success(msg); fetchExamData(); }}
         />
       )}
-    </div>
+    </>
   );
 }

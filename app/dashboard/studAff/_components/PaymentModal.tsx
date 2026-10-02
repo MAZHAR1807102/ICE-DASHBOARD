@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { HandCoins } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import { Button, Field, inputClass, taka } from '../../../components/ui';
+import { useToast } from '../../../components/Providers';
 import { supabase } from '../../../../utils/supabase';
 import { totalDue, type Student } from '../../../../utils/types';
 
@@ -12,21 +15,23 @@ export default function PaymentModal({ student, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [amounts, setAmounts] = useState<Amounts>({ monthly: '', semester: '', ru_exam: '', fine: '' });
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const fields: { key: keyof Amounts; label: string; due: number; fine?: boolean }[] = [
-    { key: 'monthly', label: 'Monthly', due: student.monthly_due || 0 },
-    { key: 'semester', label: 'Semester', due: student.semester_due || 0 },
-    { key: 'ru_exam', label: 'RU Exam', due: student.exam_due || 0 },
-    { key: 'fine', label: 'Fine', due: student.attendance_fine || 0, fine: true },
+  const fields: { key: keyof Amounts; label: string; due: number }[] = [
+    { key: 'monthly', label: 'Monthly fee', due: student.monthly_due || 0 },
+    { key: 'semester', label: 'Semester fee', due: student.semester_due || 0 },
+    { key: 'ru_exam', label: 'RU exam fee', due: student.exam_due || 0 },
+    { key: 'fine', label: 'Attendance fine', due: student.attendance_fine || 0 },
   ];
+  const value = (key: keyof Amounts) => Number(amounts[key]) || 0;
+  const total = value('monthly') + value('semester') + value('ru_exam') + value('fine');
 
-  const handleSave = async () => {
-    const value = (key: keyof Amounts) => Number(amounts[key]) || 0;
-    const total = value('monthly') + value('semester') + value('ru_exam') + value('fine');
-    if (total === 0) return alert('Please enter at least one valid payment amount.');
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (total === 0) return toast.info('Enter at least one amount.');
 
     // All lines are saved together as one receipt, or none are (e.g. if one is more than owed).
     setIsSaving(true);
@@ -40,54 +45,40 @@ export default function PaymentModal({ student, onClose, onSaved }: {
     });
     setIsSaving(false);
 
-    if (error) return alert(`Payment not saved: ${error.message}`);
-    alert(`Payment of ৳${total} recorded for ${student.name}.\nReceipt: ${String(receiptId).slice(0, 8).toUpperCase()}`);
+    if (error) return toast.error(`Payment not saved: ${error.message}`);
+    toast.success(`${taka(total)} received from ${student.name}.\nReceipt ${String(receiptId).slice(0, 8).toUpperCase()}`);
     onSaved();
   };
 
   return (
-    <Modal title="Receive Payments" onClose={onClose}>
-      <div className="space-y-4">
-        <div className="bg-blue-50 p-3 rounded-lg text-sm border border-blue-100">
-          Recording payment for <span className="font-bold text-blue-900">{student.name}</span>.<br />
-          Current total due: <span className="font-bold text-rose-600">৳{totalDue(student)}</span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          {fields.map(({ key, label, due, fine }) => (
-            <div key={key}>
-              <label className={`block text-xs font-bold mb-1 ${fine ? 'text-rose-600' : 'text-slate-700'}`}>{label} (Due: ৳{due})</label>
-              <input
-                type="number"
-                min="0"
-                value={amounts[key]}
-                onChange={(e) => setAmounts({ ...amounts, [key]: e.target.value })}
-                className={`w-full border rounded-lg p-2 outline-none focus:ring-2 ${fine ? 'border-rose-300 bg-rose-50 focus:ring-rose-500' : 'border-slate-300 focus:ring-emerald-500'}`}
-                placeholder="0"
-              />
-            </div>
+    <Modal title="Receive payment" description={`${student.name} · owes ${taka(totalDue(student))} in total`} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {fields.map(({ key, label, due }) => (
+            <Field key={key} label={label} hint={due > 0 ? `Owes ${taka(due)}` : 'Nothing owed'}>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">৳</span>
+                <input
+                  type="number" min="0" inputMode="decimal" disabled={due <= 0}
+                  value={amounts[key]}
+                  onChange={(e) => setAmounts({ ...amounts, [key]: e.target.value })}
+                  className={`${inputClass} pl-7`} placeholder="0"
+                />
+              </div>
+            </Field>
           ))}
         </div>
-
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">Note (optional)</label>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500"
-            placeholder="e.g. Cash, bKash TrxID…"
-          />
+        <Field label="Note (optional)">
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} placeholder="e.g. Cash, bKash TrxID…" />
+        </Field>
+        <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+          <span className="text-sm text-slate-600">Total received</span>
+          <span className="text-lg font-bold tabular-nums text-slate-900">{taka(total)}</span>
         </div>
-
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {isSaving ? 'Saving...' : 'Confirm & Save Receipts'}
-        </button>
-      </div>
+        <Button type="submit" variant="success" icon={HandCoins} loading={isSaving} disabled={total === 0} className="w-full">
+          Save payment & issue receipt
+        </Button>
+      </form>
     </Modal>
   );
 }

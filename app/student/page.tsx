@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSessionUser, signOut } from '../../utils/session';
+import { getSessionUser } from '../../utils/session';
 import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../utils/eligibility';
 import { academicStanding, formatGpa } from '../../utils/grades';
 import { totalDue } from '../../utils/types';
-import ChangePasswordModal from '../components/ChangePasswordModal';
+import Brand from '../components/Brand';
+import UserMenu from '../components/UserMenu';
 import { loadProfile, type Profile } from './_components/data';
 import OverviewTab from './_components/OverviewTab';
 import CoursesTab from './_components/CoursesTab';
@@ -38,7 +39,6 @@ export default function StudentPortal() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
-  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
 
   useEffect(() => {
     getSessionUser().then((user) => {
@@ -68,18 +68,12 @@ export default function StudentPortal() {
   const initials = student.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-50 text-slate-800">
       {/* TOP BAR */}
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[11px] font-black">ICE</div>
-            <span className="font-black text-slate-900 whitespace-nowrap">Student Space</span>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <button onClick={() => setIsPasswordOpen(true)} className="whitespace-nowrap px-2.5 sm:px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"><span className="hidden sm:inline">Change </span>Password</button>
-            <button onClick={() => signOut('/student-login')} className="whitespace-nowrap px-2.5 sm:px-3 py-1.5 text-sm font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">Log out</button>
-          </div>
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
+          <Brand subtitle="Student portal" href="/student" />
+          <UserMenu logoutTo="/student-login" />
         </div>
       </header>
 
@@ -152,7 +146,6 @@ export default function StudentPortal() {
         {tab === 'notices' && <Card title="Department notices"><NoticesList notices={notices} /></Card>}
       </main>
 
-      {isPasswordOpen && <ChangePasswordModal onClose={() => setIsPasswordOpen(false)} />}
     </div>
   );
 }

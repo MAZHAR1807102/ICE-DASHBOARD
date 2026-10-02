@@ -1,111 +1,60 @@
 'use client';
 
-import PortalHeader from '../../components/PortalHeader';
+import { AlertTriangle, Info, MessageSquareText, TriangleAlert, Users } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, PageHeader, StatCard, table } from '../../components/ui';
+
+// Preview only — not connected to live records yet (waiting on the advisor assignments).
+const SAMPLE = [
+  { id: '014', name: 'Student M', sem: 3, attendance: 92, cgpa: '3.75', backlogs: 0, risk: 'Normal' as const },
+  { id: '042', name: 'Student X', sem: 5, attendance: 70, cgpa: '2.80', backlogs: 1, risk: 'Medium' as const },
+  { id: '088', name: 'Student Z', sem: 3, attendance: 55, cgpa: '2.10', backlogs: 3, risk: 'High' as const },
+];
+const RISK_TONE = { Normal: 'emerald', Medium: 'amber', High: 'rose' } as const;
 
 export default function AdvisorDashboard() {
   return (
-    <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
-      <PortalHeader title="Student Advisor Portal" accent="blue" />
+    <>
+      <PageHeader title="Student Advisor Portal" description="Track your advisees and escalate students who need help." />
 
-      <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg px-4 py-3">
-        Preview only — the numbers and students below are sample data. This portal will be connected to live records soon.
+      <div className="mb-6 flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+        <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <p>Preview only — the numbers and students below are sample data. This portal will be connected to live records once advisors are assigned.</p>
       </div>
 
-      {/* Advisee Overview Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow p-6 border-t-4 border-indigo-500">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">Total Advisees</h3>
-          <p className="text-2xl font-bold text-gray-900">60</p>
-          <p className="text-xs text-gray-500 mt-1">Assigned Cohort</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6 border-t-4 border-red-500">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">High Risk Students</h3>
-          <p className="text-2xl font-bold text-red-700">3</p>
-          <p className="text-xs text-gray-500 mt-1">Requires immediate intervention</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6 border-t-4 border-yellow-500">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">Backlog Alerts</h3>
-          <p className="text-2xl font-bold text-yellow-700">8</p>
-          <p className="text-xs text-gray-500 mt-1">Failed/pending courses</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6 border-t-4 border-blue-500">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">Recent Consultations</h3>
-          <p className="text-2xl font-bold text-blue-700">12</p>
-          <p className="text-xs text-gray-500 mt-1">Logged this month</p>
-        </div>
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Advisees" value="60" hint="Assigned cohort" icon={Users} tone="indigo" />
+        <StatCard label="High risk" value="3" hint="Needs intervention" icon={AlertTriangle} tone="rose" />
+        <StatCard label="Backlog alerts" value="8" hint="Failed or pending courses" icon={TriangleAlert} tone="amber" />
+        <StatCard label="Consultations" value="12" hint="Logged this month" icon={MessageSquareText} tone="sky" />
       </div>
 
-      {/* Assigned Students List */}
-      <div className="bg-white rounded-lg shadow p-6 border border-gray-200 mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">My Advisees</h2>
-          <div className="space-x-2">
-            <button className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700">
-              Log Counseling Session
-            </button>
-          </div>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-100 border-b">
-                <th className="p-3 text-sm font-medium text-gray-600">ID</th>
-                <th className="p-3 text-sm font-medium text-gray-600">Name</th>
-                <th className="p-3 text-sm font-medium text-gray-600">Sem.</th>
-                <th className="p-3 text-sm font-medium text-gray-600">Attendance</th>
-                <th className="p-3 text-sm font-medium text-gray-600">CGPA</th>
-                <th className="p-3 text-sm font-medium text-gray-600">Backlogs</th>
-                <th className="p-3 text-sm font-medium text-gray-600">Risk Level</th>
-                <th className="p-3 text-sm font-medium text-gray-600">Actions</th>
+      <Card className="overflow-hidden">
+        <CardHeader title="My advisees" icon={Users} actions={<Button size="sm" variant="secondary" disabled>Log counselling session</Button>} />
+        <div className={table.wrap}>
+          <table className={table.table}>
+            <thead className={table.head}>
+              <tr>
+                <th className={table.th}>Student</th>
+                <th className={`${table.th} text-center`}>Attendance</th>
+                <th className={`${table.th} text-center`}>CGPA</th>
+                <th className={`${table.th} text-center`}>Backlogs</th>
+                <th className={table.th}>Risk</th>
               </tr>
             </thead>
-            <tbody>
-              <tr className="border-b hover:bg-gray-50">
-                <td className="p-3 text-sm">014</td>
-                <td className="p-3 text-sm font-medium">Student M</td>
-                <td className="p-3 text-sm">3</td>
-                <td className="p-3 text-sm text-green-600 font-medium">92%</td>
-                <td className="p-3 text-sm">3.75</td>
-                <td className="p-3 text-sm">0</td>
-                <td className="p-3 text-sm"><span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">Normal</span></td>
-                <td className="p-3 text-sm"><button className="text-blue-600 hover:underline">View Profile</button></td>
-              </tr>
-              <tr className="border-b hover:bg-gray-50">
-                <td className="p-3 text-sm">042</td>
-                <td className="p-3 text-sm font-medium">Student X</td>
-                <td className="p-3 text-sm">5</td>
-                <td className="p-3 text-sm text-yellow-600 font-medium">70%</td>
-                <td className="p-3 text-sm">2.80</td>
-                <td className="p-3 text-sm">1</td>
-                <td className="p-3 text-sm"><span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs">Medium</span></td>
-                <td className="p-3 text-sm"><button className="text-blue-600 hover:underline">Message</button></td>
-              </tr>
-              <tr className="border-b hover:bg-gray-50">
-                <td className="p-3 text-sm">088</td>
-                <td className="p-3 text-sm font-medium">Student Z</td>
-                <td className="p-3 text-sm">3</td>
-                <td className="p-3 text-sm text-red-600 font-medium">55%</td>
-                <td className="p-3 text-sm">2.10</td>
-                <td className="p-3 text-sm">3</td>
-                <td className="p-3 text-sm"><span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">High</span></td>
-                <td className="p-3 text-sm"><button className="text-red-600 font-medium hover:underline">Escalate to HOD</button></td>
-              </tr>
+            <tbody className={table.body}>
+              {SAMPLE.map((s) => (
+                <tr key={s.id} className={table.row}>
+                  <td className={table.td}><p className="font-medium text-slate-900">{s.name}</p><p className="text-xs text-slate-500">{s.id} · Sem {s.sem}</p></td>
+                  <td className={`${table.td} text-center`}><Badge tone={s.attendance < 60 ? 'rose' : s.attendance < 75 ? 'amber' : 'emerald'}>{s.attendance}%</Badge></td>
+                  <td className={`${table.td} text-center tabular-nums`}>{s.cgpa}</td>
+                  <td className={`${table.td} text-center tabular-nums`}>{s.backlogs}</td>
+                  <td className={table.td}><Badge tone={RISK_TONE[s.risk]} dot>{s.risk}</Badge></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-      </div>
-      
-      {/* Escalation System (Level 2 to Level 3) */}
-      <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-        <h2 className="text-lg font-semibold mb-3 text-gray-800">Escalation System (Level 2)</h2>
-        <p className="text-sm text-gray-700 mb-4">
-          For recurring issues (e.g., repeated absences despite counseling or serious academic failure), escalate the matter to Level 3 (HOD) for review.
-        </p>
-        <button className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700">
-          Create HOD Escalation Ticket
-        </button>
-      </div>
-    </div>
+      </Card>
+    </>
   );
 }
