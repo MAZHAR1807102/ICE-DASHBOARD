@@ -1,7 +1,10 @@
-import { GraduationCap, History } from 'lucide-react';
+'use client';
+
+import { useState } from 'react';
+import { ChevronLeft, ChevronRight, GraduationCap, History } from 'lucide-react';
 import { formatGpa, semesterSummaries, standingThrough } from '../../../utils/grades';
 import { DEGREE_CREDITS, type AcademicOpening, type CourseResult, type SemesterResult } from '../../../utils/types';
-import { Badge } from '../../components/ui';
+import { Badge, Button, inputClass } from '../../components/ui';
 import GpaChart from './GpaChart';
 import { Card, EmptyState, GradeChip } from './ui';
 
@@ -22,7 +25,11 @@ export function DegreeProgress({ earned }: { earned: number }) {
   );
 }
 
+type View = 'all' | 'earlier' | number;
+
 export default function ResultsTab({ results, official, opening }: { results: CourseResult[]; official: SemesterResult[]; opening: AcademicOpening | null }) {
+  const [view, setView] = useState<View>('all');
+
   if (results.length === 0 && official.length === 0 && !opening) {
     return (
       <Card>
@@ -33,6 +40,14 @@ export default function ResultsTab({ results, official, opening }: { results: Co
 
   const semesters = semesterSummaries(results, official, opening);
   const standing = standingThrough(results, opening);
+
+  // Semester picker: "All", each semester with results, and the carried-forward earlier semesters.
+  const choices: View[] = ['all', ...(opening ? (['earlier'] as View[]) : []), ...semesters.map((s) => s.semester)];
+  const position = choices.indexOf(view);
+  const step = (delta: number) => setView(choices[Math.min(choices.length - 1, Math.max(1, position + delta))]);
+  const shown = view === 'all' ? [...semesters].reverse() : semesters.filter((s) => s.semester === view);
+  const showEarlier = opening && (view === 'all' || view === 'earlier');
+  const gpaOf = (s: (typeof semesters)[number]) => (s.official?.gpa != null ? Number(s.official.gpa).toFixed(3) : formatGpa(s.gpa));
 
   return (
     <div className="space-y-4">
@@ -57,11 +72,39 @@ export default function ResultsTab({ results, official, opening }: { results: Co
 
       {semesters.length > 0 && (
         <Card title="GPA and CGPA by semester">
-          <GpaChart points={semesters.map(({ semester, gpa, credits, cgpaAfter }) => ({ semester, gpa, credits, cgpa: cgpaAfter }))} />
+          <GpaChart
+            points={semesters.map(({ semester, gpa, credits, cgpaAfter }) => ({ semester, gpa, credits, cgpa: cgpaAfter }))}
+            selected={typeof view === 'number' ? view : undefined}
+            onSelect={(semester) => setView(semester)}
+          />
+          <p className="mt-1 text-[11px] text-slate-400">Tap a semester on the chart to open its results.</p>
         </Card>
       )}
 
-      {[...semesters].reverse().map((s) => (
+      <div className="sticky top-[53px] z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50/95 px-1 py-2 backdrop-blur">
+        <label htmlFor="semester-view" className="text-sm font-semibold text-slate-700">Show</label>
+        <select
+          id="semester-view"
+          value={String(view)}
+          onChange={(e) => setView(e.target.value === 'all' || e.target.value === 'earlier' ? e.target.value : Number(e.target.value))}
+          className={`${inputClass} !w-full sm:!w-80`}
+        >
+          <option value="all">All semesters</option>
+          {opening && <option value="earlier">{opening.through_semester === 1 ? 'Semester 1' : `Semesters 1–${opening.through_semester}`} (earlier results)</option>}
+          {[...semesters].reverse().map((s) => (
+            <option key={s.semester} value={s.semester}>Semester {s.semester} — GPA {gpaOf(s)}</option>
+          ))}
+        </select>
+        {view !== 'all' && (
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="secondary" icon={ChevronLeft} disabled={position <= 1} onClick={() => step(-1)} aria-label="Previous semester" />
+            <Button size="sm" variant="secondary" icon={ChevronRight} disabled={position >= choices.length - 1} onClick={() => step(1)} aria-label="Next semester" />
+            <Button size="sm" variant="ghost" onClick={() => setView('all')}>Show all</Button>
+          </div>
+        )}
+      </div>
+
+      {shown.map((s) => (
         <Card
           key={s.semester}
           title={`Semester ${s.semester}`}
@@ -69,7 +112,7 @@ export default function ResultsTab({ results, official, opening }: { results: Co
             <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
               {s.official?.result_status && <Badge tone={STATUS_TONE[s.official.result_status.toLowerCase()] ?? 'slate'} dot>{s.official.result_status === 'Cond' ? 'Conditional' : s.official.result_status}</Badge>}
               {s.official?.merit_position && <Badge tone="violet">Merit #{s.official.merit_position}</Badge>}
-              <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-black text-indigo-700">GPA {s.official?.gpa != null ? Number(s.official.gpa).toFixed(3) : formatGpa(s.gpa)}</span>
+              <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-black text-indigo-700">GPA {gpaOf(s)}</span>
             </div>
           }
         >
@@ -122,7 +165,7 @@ export default function ResultsTab({ results, official, opening }: { results: Co
         </Card>
       ))}
 
-      {opening && (
+      {showEarlier && (
         <Card>
           <div className="flex items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><History className="size-5" aria-hidden /></span>

@@ -15,7 +15,7 @@ const TICKS = [0, 1, 2, 3, 4];
 
 type Point = { semester: number; gpa: number; credits: number; cgpa?: number };
 
-export default function GpaChart({ points }: { points: Point[] }) {
+export default function GpaChart({ points, selected, onSelect }: { points: Point[]; selected?: number; onSelect?: (semester: number) => void }) {
   const [hover, setHover] = useState<number | null>(null);
   const [W, setW] = useState(640);
   const ref = useRef<HTMLElement>(null);
@@ -49,6 +49,13 @@ export default function GpaChart({ points }: { points: Point[] }) {
       )}
       {points.length > 0 && (
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block max-w-full" role="img" onMouseLeave={() => setHover(null)}>
+          {/* Selected semester: a soft band behind everything, kept inside the plot area */}
+          {points.map((p, i) => {
+            if (p.semester !== selected) return null;
+            const left = Math.max(PAD.left, x(i) - 18);
+            const right = Math.min(W - PAD.right + 12, x(i) + 18);
+            return <rect key={`sel-${p.semester}`} x={left} y={PAD.top - 6} width={right - left} height={plotH + 12} rx={8} fill="#eef2ff" />;
+          })}
           {TICKS.map((t) => (
             <g key={t}>
               <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} stroke={GRID} strokeWidth={1} />
@@ -81,6 +88,9 @@ export default function GpaChart({ points }: { points: Point[] }) {
             return (
               <rect key={p.semester} x={x(i) - half} y={PAD.top} width={half * 2} height={plotH} fill="transparent"
                 onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} tabIndex={0}
+                onClick={() => onSelect?.(p.semester)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(p.semester); } }}
+                style={onSelect ? { cursor: 'pointer' } : undefined}
                 aria-label={`Semester ${p.semester}: GPA ${formatGpa(p.gpa)}${p.cgpa !== undefined ? `, CGPA ${formatGpa(p.cgpa)}` : ''}`} />
             );
           })}
