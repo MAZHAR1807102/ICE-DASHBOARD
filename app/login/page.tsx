@@ -34,7 +34,7 @@ export default function LoginPage() {
       // Full navigation so the proxy sees the new session cookie.
       window.location.replace(ROLE_HOME[role]);
 
-    } catch (err) {
+    } catch {
       setError('A connection error occurred. Please try again.');
       setIsLoading(false);
     }
