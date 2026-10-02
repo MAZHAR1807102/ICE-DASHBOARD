@@ -1,28 +1,43 @@
 'use client';
 
-import React from 'react';
+import { useEffect } from 'react';
+import { X } from 'lucide-react';
 
-const WIDTHS = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-3xl' };
+const WIDTHS = { sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg', xl: 'sm:max-w-3xl' };
 
+// Bottom sheet on phones, centred dialog on larger screens. Esc closes it.
 export default function Modal({
   title,
+  description,
   onClose,
   size = 'md',
   children,
 }: {
   title: string;
+  description?: string;
   onClose: () => void;
   size?: keyof typeof WIDTHS;
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-2xl shadow-2xl w-full ${WIDTHS[size]} overflow-hidden animate-in fade-in zoom-in duration-200`}>
-        <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-          <h3 className="font-bold text-slate-800 text-lg">{title}</h3>
-          <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-slate-700 font-bold text-xl">×</button>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`flex max-h-[92vh] w-full ${WIDTHS[size]} animate-pop-in flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl`}>
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+            {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
+          </div>
+          <button onClick={onClose} aria-label="Close" className="-mr-2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X className="size-5" />
+          </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="overflow-y-auto p-6">{children}</div>
       </div>
     </div>
   );

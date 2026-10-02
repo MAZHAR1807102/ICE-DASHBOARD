@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabase';
-import { signOut } from '../../utils/session';
+import Brand from '../components/Brand';
+import UserMenu from '../components/UserMenu';
 import { useSessionUser } from '../../utils/useSessionUser';
+import { ClipboardEdit } from 'lucide-react';
+import { EmptyState } from '../components/ui';
 import MarksSheet, { type TeacherCourse } from './_components/MarksSheet';
 
 const savedLabel = (iso: string | null) =>
@@ -28,15 +31,11 @@ export default function TeacherPortal() {
   const selected = courses?.find((c) => c.id === selectedId);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 shrink-0 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[11px] font-black">ICE</div>
-            <span className="font-black text-slate-900 whitespace-nowrap">Teacher Portal</span>
-            {user?.name && <span className="hidden sm:inline text-sm text-slate-500 truncate">· {user.name}</span>}
-          </div>
-          <button onClick={() => signOut('/teacher-login')} className="whitespace-nowrap px-3 py-1.5 text-sm font-bold text-rose-600 hover:bg-rose-50 rounded-lg">Log out</button>
+    <div className="min-h-screen bg-slate-50 text-slate-800">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
+          <Brand subtitle="Teacher portal" href="/teacher" />
+          <UserMenu logoutTo="/teacher-login" />
         </div>
       </header>
 
@@ -69,11 +68,7 @@ export default function TeacherPortal() {
           {selected ? (
             <MarksSheet key={selected.id} course={selected} onSaved={loadCourses} />
           ) : (
-            <div className="p-12 text-center text-slate-500">
-              <p className="text-3xl mb-2" aria-hidden>📝</p>
-              <p className="font-bold text-slate-800">Choose a course</p>
-              <p className="text-sm mt-1">Pick one of your courses on the left to enter CT marks.</p>
-            </div>
+            <EmptyState icon={ClipboardEdit} title="Choose a course" body="Pick one of your courses to enter CT marks." />
           )}
         </section>
       </main>

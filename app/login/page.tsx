@@ -1,8 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
+import { AlertCircle, LogIn } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
 import { FACULTY_ROLES, ROLE_HOME, roleFromMetadata } from '../../utils/auth';
+import AuthLayout from '../components/AuthLayout';
+import { Button, Field, inputClass } from '../components/ui';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -33,7 +37,6 @@ export default function LoginPage() {
 
       // Full navigation so the proxy sees the new session cookie.
       window.location.replace(ROLE_HOME[role]);
-
     } catch {
       setError('A connection error occurred. Please try again.');
       setIsLoading(false);
@@ -41,70 +44,26 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center -space-x-2 mb-6">
-          <div className="w-16 h-16 rounded-full bg-white shadow-md border-2 border-slate-200 flex items-center justify-center z-10">
-            <span className="text-sm font-black text-slate-400">ICE</span>
+    <AuthLayout
+      title="Run the department from one place."
+      subtitle="Faculty sign in"
+      highlights={['Billing, payments and receipts', 'Courses, attendance and CT marks', 'Eligibility checks and results']}
+      footer={<>Course teacher entering CT marks? <Link href="/teacher-login" className="font-semibold text-indigo-600 hover:underline">Sign in here</Link></>}
+    >
+      <form className="space-y-5" onSubmit={handleLogin}>
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-700 ring-1 ring-rose-200" role="alert">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {error}
           </div>
-          <div className="w-16 h-16 rounded-full bg-indigo-50 shadow-md border-2 border-indigo-200 flex items-center justify-center z-0">
-            <span className="text-xs font-bold text-indigo-500">CSE</span>
-          </div>
-        </div>
-        <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Faculty Portal Access
-        </h2>
-        <p className="mt-2 text-center text-sm text-slate-600">
-          Sign in to manage departmental operations
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-xl shadow-slate-200/50 sm:rounded-xl sm:px-10 border border-slate-100">
-          <form className="space-y-6" onSubmit={handleLogin}>
-            {error && (
-              <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-md animate-in fade-in slide-in-from-top-2">
-                <p className="text-sm text-rose-700 font-bold">{error}</p>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Institutional Email</label>
-              <input 
-                type="email" 
-                required 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none block w-full px-4 py-3 bg-white border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
-                placeholder="faculty@imperial.edu"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Password</label>
-              <input 
-                type="password" 
-                required 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none block w-full px-4 py-3 bg-white border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50"
-            >
-              {isLoading ? 'Authenticating...' : 'Secure Sign In'}
-            </button>
-          </form>
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Course teacher entering CT marks? <a href="/teacher-login" className="font-bold text-indigo-600 hover:underline">Sign in here</a>
-          </p>
-        </div>
-      </div>
-    </div>
+        )}
+        <Field label="Email">
+          <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputClass} h-11`} placeholder="you@imperial.edu" />
+        </Field>
+        <Field label="Password">
+          <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputClass} h-11`} />
+        </Field>
+        <Button type="submit" size="lg" icon={LogIn} loading={isLoading} className="w-full">Sign in</Button>
+      </form>
+    </AuthLayout>
   );
 }

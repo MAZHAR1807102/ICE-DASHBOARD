@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { BookOpen, ClipboardList, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { SEMESTERS, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
-import PortalHeader from '../../components/PortalHeader';
+import { Button, Card, PageHeader, Tabs, inputClass } from '../../components/ui';
+import { useToast } from '../../components/Providers';
 import RosterTab from './_components/RosterTab';
 import CtMarksTab from './_components/CtMarksTab';
 import CurriculumTab from './_components/CurriculumTab';
@@ -12,14 +14,8 @@ import StudentModal from './_components/StudentModal';
 
 type Tab = 'roster' | 'ct_marks' | 'curriculum' | 'notices';
 
-const TABS: { id: Tab; label: string; active: string }[] = [
-  { id: 'roster', label: '👥 Roster & Attendance', active: 'bg-blue-600' },
-  { id: 'ct_marks', label: '📝 CT Marks Mgt', active: 'bg-indigo-600' },
-  { id: 'curriculum', label: '⚙️ Curriculum & Faculty', active: 'bg-purple-600' },
-  { id: 'notices', label: '📢 Broadcasts', active: 'bg-slate-800' },
-];
-
 export default function AcademicDashboard() {
+  const toast = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -29,7 +25,6 @@ export default function AcademicDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('roster');
   const [selectedSemester, setSelectedSemester] = useState('All');
   const [selectedCourseCode, setSelectedCourseCode] = useState('');
-  const [message, setMessage] = useState('');
   const [studentModal, setStudentModal] = useState<{ student?: Student } | null>(null);
 
   const loadData = useCallback(() =>
@@ -63,74 +58,60 @@ export default function AcademicDashboard() {
     if (selectedCourseCode) loadMarks(selectedCourseCode);
   };
 
-  const showMessage = (msg: string) => {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), 4000);
-  };
+  const showMessage = (msg: string) => (/^(error|⚠️|❌)/i.test(msg) ? toast.error(msg) : toast.success(msg));
 
   const displayedStudents = selectedSemester === 'All' ? students : students.filter((s) => s.semester.toString() === selectedSemester);
   const displayedCourses = selectedSemester === 'All' ? courses : courses.filter((c) => c.semester.toString() === selectedSemester);
   const currentCourse = courses.find((c) => c.course_code === selectedCourseCode);
   const courseMarks = marks.course === selectedCourseCode ? marks.rows : {};
   const tabKey = `${selectedSemester}:${selectedCourseCode}:${version}`;
+  const needsCourse = activeTab === 'ct_marks' || activeTab === 'roster';
 
   return (
-    <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
-      <PortalHeader title="Academic Coordination" accent="indigo" />
+    <>
+      <PageHeader
+        title="Academic Coordination"
+        description="Students, courses, attendance, CT marks and notices."
+        actions={<Button icon={UserPlus} onClick={() => setStudentModal({})}>Add student</Button>}
+      />
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
-        {/* TOOLBAR */}
-        <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-          <div>
-            <div className="flex flex-wrap gap-2">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors ${activeTab === tab.id ? `${tab.active} text-white` : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            {message && <p className="text-xs text-emerald-600 mt-2 font-bold bg-emerald-50 inline-block px-2 py-1 rounded">{message}</p>}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-bold text-slate-600">Batch Filter:</label>
-              <select
-                value={selectedSemester}
-                onChange={(e) => { setSelectedSemester(e.target.value); setSelectedCourseCode(''); }}
-                className="border border-slate-300 rounded-lg p-2 text-sm text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-              >
-                <option value="All">All Semesters</option>
-                {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
-              </select>
-            </div>
-
-            {(activeTab === 'ct_marks' || activeTab === 'roster') && selectedSemester !== 'All' && (
-              <div className="flex items-center space-x-2 border-l border-slate-300 pl-4">
-                <label className="text-sm font-bold text-indigo-700">Assigned Course:</label>
-                <select
-                  value={selectedCourseCode}
-                  onChange={(e) => setSelectedCourseCode(e.target.value)}
-                  className="border border-indigo-200 rounded-lg p-2 text-sm text-indigo-800 bg-indigo-50 font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                >
-                  <option value="">-- Select Course --</option>
-                  {displayedCourses.map((c) => <option key={c.course_code} value={c.course_code}>{c.course_code}</option>)}
-                </select>
-              </div>
-            )}
-
-            {activeTab === 'roster' && (
-              <button onClick={() => setStudentModal({})} className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 shadow-sm ml-2">
-                + Add Student
-              </button>
-            )}
-          </div>
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <Tabs
+          value={activeTab}
+          onChange={setActiveTab}
+          tabs={[
+            { id: 'roster', label: 'Roster & Attendance', icon: UsersRound },
+            { id: 'ct_marks', label: 'CT Marks', icon: ClipboardList },
+            { id: 'curriculum', label: 'Curriculum', icon: BookOpen },
+            { id: 'notices', label: 'Broadcasts', icon: Megaphone, count: notices.length },
+          ]}
+        />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <select
+            value={selectedSemester}
+            onChange={(e) => { setSelectedSemester(e.target.value); setSelectedCourseCode(''); }}
+            className={`${inputClass} sm:w-44`}
+            aria-label="Semester"
+          >
+            <option value="All">All semesters</option>
+            {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
+          </select>
+          {needsCourse && (
+            <select
+              value={selectedCourseCode}
+              onChange={(e) => setSelectedCourseCode(e.target.value)}
+              disabled={selectedSemester === 'All'}
+              className={`${inputClass} sm:w-56`}
+              aria-label="Course"
+            >
+              <option value="">{selectedSemester === 'All' ? 'Pick a semester first' : 'Select a course'}</option>
+              {displayedCourses.map((c) => <option key={c.course_code} value={c.course_code}>{c.course_code} — {c.course_name}</option>)}
+            </select>
+          )}
         </div>
+      </div>
 
+      <Card className="overflow-hidden">
         {activeTab === 'roster' && (
           <RosterTab
             key={tabKey}
@@ -156,7 +137,7 @@ export default function AcademicDashboard() {
           />
         )}
         {activeTab === 'notices' && <NoticesTab notices={notices} onChanged={reload} showMessage={showMessage} />}
-      </div>
+      </Card>
 
       {studentModal && (
         <StudentModal
@@ -166,6 +147,6 @@ export default function AcademicDashboard() {
           onSaved={(msg) => { showMessage(msg); setStudentModal(null); reload(); }}
         />
       )}
-    </div>
+    </>
   );
 }

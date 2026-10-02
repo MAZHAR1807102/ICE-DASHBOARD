@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { Save } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
 import { SEMESTERS, type Student } from '../../../../utils/types';
 import Modal from '../../../components/Modal';
+import { Button, Field, inputClass } from '../../../components/ui';
 
 // Only these fields are edited here — balances are managed by the finance ledger.
 const EDITABLE = ['college_id', 'ru_id', 'name', 'semester', 'advisor', 'student_contact', 'guardian_contact'] as const;
@@ -18,47 +20,45 @@ export default function StudentModal({ student, defaultSemester, onClose, onSave
   const [form, setForm] = useState<StudentForm>(() =>
     student ? Object.fromEntries(EDITABLE.map((key) => [key, student[key]])) : { semester: defaultSemester },
   );
+  const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = async () => {
-    if (!form.name || !form.college_id) return alert('Name and College ID are required.');
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
     const { error } = student
       ? await supabase.from('master_students').update(form).eq('id', student.id)
       : await supabase.from('master_students').insert([form]);
-    if (error) return alert(`Error: ${error.message}`);
-    onSaved(student ? 'Student updated successfully.' : 'Student added successfully.');
+    setIsSaving(false);
+    if (error) return setError(error.message);
+    onSaved(student ? 'Student updated.' : 'Student added.');
   };
 
-  const field = (key: Exclude<keyof StudentForm, 'semester'>, label: string, wide = false) => (
-    <div className={wide ? 'col-span-2' : ''}>
-      <label className="block text-sm font-bold text-slate-700 mb-1">{label}</label>
-      <input
-        type="text"
-        value={form[key] || ''}
-        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-        className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
+  const field = (key: Exclude<keyof StudentForm, 'semester'>, label: string, required = false, wide = false) => (
+    <Field label={label} className={wide ? 'sm:col-span-2' : ''}>
+      <input type="text" required={required} value={form[key] || ''} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className={inputClass} />
+    </Field>
   );
 
   return (
-    <Modal title={student ? 'Edit Student Profile' : 'Add New Student'} size="lg" onClose={onClose}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          {field('college_id', 'College ID *')}
+    <Modal title={student ? 'Edit Student Profile' : 'Add a student'} description={student ? `${student.name} · ${student.college_id}` : undefined} size="lg" onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {field('name', 'Full name', true, true)}
+          {field('college_id', 'College ID', true)}
           {field('ru_id', 'RU ID')}
-          {field('name', 'Full Name *', true)}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Semester</label>
-            <select value={form.semester} onChange={(e) => setForm({ ...form, semester: parseInt(e.target.value) })} className="w-full border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+          <Field label="Semester">
+            <select value={form.semester} onChange={(e) => setForm({ ...form, semester: parseInt(e.target.value) })} className={inputClass}>
               {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
             </select>
-          </div>
-          {field('advisor', 'Assigned Advisor')}
-          {field('student_contact', 'Student Contact Number', true)}
-          {field('guardian_contact', 'Guardian Contact Number', true)}
+          </Field>
+          {field('advisor', 'Advisor')}
+          {field('student_contact', 'Student phone')}
+          {field('guardian_contact', 'Guardian phone')}
         </div>
-        <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition-colors">Save Student Record</button>
-      </div>
+        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>}
+        <Button type="submit" icon={Save} loading={isSaving} className="w-full">{student ? 'Save changes' : 'Add student'}</Button>
+      </form>
     </Modal>
   );
 }

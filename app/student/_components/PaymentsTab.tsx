@@ -1,4 +1,5 @@
 import { totalDue, type FinanceTransaction, type Student } from '../../../utils/types';
+import { ReceiptText } from 'lucide-react';
 import { Card, EmptyState, formatDate, taka } from './ui';
 
 const CATEGORY = { monthly: 'Monthly fee', semester: 'Semester fee', ru_exam: 'RU exam fee', fine: 'Attendance fine' };
@@ -41,7 +42,7 @@ export default function PaymentsTab({ student, transactions }: { student: Studen
 
       <Card title="Payment history">
         {transactions.length === 0 ? (
-          <EmptyState icon="🧾" title="No transactions yet" body="Bills, payments and receipts will be listed here." />
+          <EmptyState icon={ReceiptText} title="No transactions yet" body="Bills, payments and receipts will be listed here." />
         ) : (
           <ol className="relative border-l border-slate-200 ml-2 space-y-5">
             {transactions.map((t) => {
