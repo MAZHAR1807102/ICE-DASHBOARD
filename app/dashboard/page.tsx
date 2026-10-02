@@ -59,7 +59,7 @@ export default function DashboardRoot() {
       let atRisk = 0;
 
       students.forEach(s => {
-        pendingRevenue += (s.agreed_monthly_fee || 0) + (s.agreed_semester_fee || 0) + (s.agreed_ru_exam_fee || 0);
+        pendingRevenue += (s.monthly_due || 0) + (s.semester_due || 0) + (s.exam_due || 0) + (s.attendance_fine || 0);
         totalAtt += (s.attendance_percentage || 0);
         if ((s.attendance_percentage || 0) < 60) atRisk++;
       });

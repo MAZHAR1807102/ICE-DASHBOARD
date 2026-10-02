@@ -21,3 +21,16 @@ New students: Academic dashboard → roster → **Set Login** creates or resets 
 
 **Rollback** (before step 7): redeploy the previous commit and run
 `alter table <table> disable row level security;` for each table in 001.
+
+---
+
+# Finance ledger (003) — rollout steps
+
+Do this when finance staff aren't entering payments (takes ~5 minutes).
+
+1. Supabase → SQL Editor → run `migrations/003_finance_ledger.sql`.
+   It copies every student's current balance into the ledger as an opening entry and
+   **checks that every balance is unchanged** — if anything doesn't match, it stops and changes nothing.
+2. Right away, deploy the `finance-ledger` branch (merge into `main` and push).
+   Between steps 1 and 2 the old finance page can still show balances, but saving payments fails.
+3. Test as finance: record a small payment, open **History**, try billing twice (second time bills nobody).
