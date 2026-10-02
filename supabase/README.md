@@ -102,3 +102,17 @@ Run **before** deploying the matching code — Publish Results calls `publish_re
 3. Re-upload any sheet that failed with "ON CONFLICT DO UPDATE command cannot affect row a second
    time" (the semester 1 improvement sheet): its grades were saved but its official figures weren't.
    Re-uploading the same file replaces the grades and adds the missing figures — no duplicates.
+
+---
+
+# Editing published results (009)
+
+Run **before** deploying the matching code — the editors call the new functions.
+
+1. Supabase → SQL Editor → run `migrations/009_result_editing.sql`.
+2. Deploy the code.
+
+Exams → **Results** (on any student): edit a grade / credit / course code / semester, add or delete a
+course result, edit or delete the official figures. Every change asks for a reason and is kept in
+`result_changes` (who, when, before → after, reason) — nobody can edit or delete that history.
+Rename / Remove in **Published results** are recorded the same way.

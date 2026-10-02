@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { FileStack, Pencil, Trash2 } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { Badge, Button, EmptyState, cx, inputClass } from '../../../components/ui';
-import { useConfirm, useToast } from '../../../components/Providers';
+import { useToast } from '../../../components/Providers';
+import ReasonDialog from './ReasonDialog';
 import { supabase } from '../../../../utils/supabase';
 
 type Row = { semester: number; exam_key: string; course_code: string; student_id: string; published_at: string; published_by_name: string | null };
@@ -62,10 +63,10 @@ async function fetchPublications(): Promise<Publication[]> {
 // Every published sheet (semester + exam), with ways to fix a misread course code or remove it entirely.
 export default function PublishedResultsModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const toast = useToast();
-  const confirm = useConfirm();
   const [publications, setPublications] = useState<Publication[] | null>(null);
   const [renaming, setRenaming] = useState<{ pub: Publication; from: string; to: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [reasonFor, setReasonFor] = useState<{ title: string; summary: string; danger?: boolean; confirmLabel: string; run: (reason: string) => Promise<void> } | null>(null);
+  const busy = reasonFor !== null;
 
   const load = useCallback(() =>
     fetchPublications()
@@ -79,42 +80,41 @@ export default function PublishedResultsModal({ onClose, onChanged }: { onClose:
     load();
   }, [load]);
 
-  const handleRemove = async (pub: Publication) => {
-    const ok = await confirm({
-      title: `Remove this publication?`,
-      body: `Semester ${pub.semester} · ${pub.title}\n${pub.students} students · ${pub.courses.length} courses.\n\nTheir grades and official figures from this sheet are deleted and every affected CGPA is recalculated. You can upload the sheet again afterwards.`,
-      confirmLabel: 'Remove publication',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    setBusy(true);
-    const summaries = await supabase.from('semester_results').delete().eq('semester', pub.semester).eq('exam_key', pub.examKey);
-    const grades = summaries.error ? summaries : await supabase.from('course_results').delete().eq('semester', pub.semester).eq('exam_key', pub.examKey);
-    setBusy(false);
-    if (grades.error) return toast.error(`Not removed: ${grades.error.message}`);
-    toast.success(`Removed semester ${pub.semester} · ${pub.title}.`);
-    load();
-    onChanged();
-  };
+  const handleRemove = (pub: Publication) => setReasonFor({
+    title: 'Remove this publication?',
+    summary: `Semester ${pub.semester} · ${pub.title} — ${pub.students} students, ${pub.courses.length} courses. Grades and official figures from this sheet are deleted and every affected CGPA is recalculated.`,
+    danger: true,
+    confirmLabel: 'Remove publication',
+    run: async (reason) => {
+      const { error } = await supabase.rpc('remove_publication', { p_semester: pub.semester, p_exam_key: pub.examKey, p_reason: reason });
+      if (error) return toast.error(`Not removed: ${error.message}`);
+      toast.success(`Removed semester ${pub.semester} · ${pub.title}.`);
+      setReasonFor(null);
+      load();
+      onChanged();
+    },
+  });
 
-  const handleRename = async () => {
+  const handleRename = () => {
     if (!renaming) return;
+    const { pub, from } = renaming;
     const to = renaming.to.toUpperCase().replace(/\s+/g, '');
-    if (!to || to === renaming.from) return setRenaming(null);
-    if (renaming.pub.courses.some((c) => c.code === to)) return toast.error(`${to} is already on this sheet — remove or rename that one first.`);
-    setBusy(true);
-    const { error } = await supabase
-      .from('course_results')
-      .update({ course_code: to })
-      .eq('semester', renaming.pub.semester)
-      .eq('exam_key', renaming.pub.examKey)
-      .eq('course_code', renaming.from);
-    setBusy(false);
-    if (error) return toast.error(`Not renamed: ${error.message}`);
-    toast.success(`${renaming.from} renamed to ${to} for semester ${renaming.pub.semester}.`);
-    setRenaming(null);
-    load();
-    onChanged();
+    if (!to || to === from) return setRenaming(null);
+    if (pub.courses.some((c) => c.code === to)) return toast.error(`${to} is already on this sheet — remove or rename that one first.`);
+    setReasonFor({
+      title: `Rename ${from} to ${to}?`,
+      summary: `Semester ${pub.semester} · ${pub.title} — ${pub.courses.find((c) => c.code === from)?.count ?? 0} grades.`,
+      confirmLabel: 'Rename',
+      run: async (reason) => {
+        const { error } = await supabase.rpc('rename_published_course', { p_semester: pub.semester, p_exam_key: pub.examKey, p_from: from, p_to: to, p_reason: reason });
+        if (error) return toast.error(`Not renamed: ${error.message}`);
+        toast.success(`${from} renamed to ${to} for semester ${pub.semester}.`);
+        setReasonFor(null);
+        setRenaming(null);
+        load();
+        onChanged();
+      },
+    });
   };
 
   return (
@@ -170,6 +170,7 @@ export default function PublishedResultsModal({ onClose, onChanged }: { onClose:
           ))}
         </ul>
       )}
+      {reasonFor && <ReasonDialog {...reasonFor} onCancel={() => setReasonFor(null)} onConfirm={reasonFor.run} />}
     </Modal>
   );
 }
