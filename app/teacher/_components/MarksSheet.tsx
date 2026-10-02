@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { classifyCohorts, groupHeadings, orderByCohort, type Cohort } from '../../../utils/cohort';
 import { supabase } from '../../../utils/supabase';
 import { downloadCsv, parseCsv, toCsv } from '../../../utils/csv';
 import { ctCount, ctMax } from '../../../utils/ct';
 import { Download, Save, Upload } from 'lucide-react';
-import { Button } from '../../components/ui';
+import { Button, ReaddBadge } from '../../components/ui';
 
 export type TeacherCourse = {
   id: string;
@@ -31,17 +32,23 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [cohorts, setCohorts] = useState<Map<string, Cohort>>(new Map());
 
   useEffect(() => {
     supabase.rpc('teacher_roster', { p_course_id: course.id }).then(({ data, error }) => {
       if (error) return setNotice({ tone: 'error', text: error.message });
-      const rows = (data ?? []) as RosterRow[];
+      // Regular students first, then Readd, each in ascending roll order.
+      const raw = (data ?? []) as RosterRow[];
+      const asStudents = raw.map((r) => ({ ...r, id: r.student_id, semester: course.semester }));
+      const groups = classifyCohorts(asStudents);
+      const rows = orderByCohort(asStudents, groups);
+      setCohorts(groups);
       const initial = Object.fromEntries(rows.map((r) => [r.student_id, [r.ct1, r.ct2, r.ct3, r.ct4].slice(0, count).map(asText)]));
       setRoster(rows);
       setMarks(initial);
       setSaved(initial);
     });
-  }, [course.id, count]);
+  }, [course.id, course.semester, count]);
 
   const invalid = (value: string) => value !== '' && (Number.isNaN(Number(value)) || Number(value) < 0 || Number(value) > max);
   const dirtyIds = useMemo(
@@ -49,6 +56,10 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
     [marks, saved],
   );
   const hasErrors = Object.values(marks).some((row) => row.some(invalid));
+  const headings = useMemo(
+    () => groupHeadings((roster ?? []).map((r) => ({ ...r, id: r.student_id, semester: course.semester })), cohorts, false),
+    [roster, cohorts, course.semester],
+  );
   const complete = Object.values(marks).filter((row) => row.every((v) => v !== '')).length;
 
   // Warn before leaving with unsaved marks.
@@ -141,12 +152,21 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
           <tbody className="divide-y divide-slate-100">
             {roster.map((r) => {
               const isDirty = dirtyIds.includes(r.student_id);
+              const heading = headings.get(r.student_id);
               return (
-                <tr key={r.student_id} className={isDirty ? 'bg-amber-50/50' : ''}>
+                <Fragment key={r.student_id}>
+                {heading && (
+                  <tr className={heading.cohort === 'readd' ? 'bg-amber-50/70' : 'bg-slate-50'}>
+                    <td colSpan={3 + count} className={`px-1 py-2 text-xs font-semibold uppercase tracking-wide ${heading.cohort === 'readd' ? 'text-amber-800' : 'text-slate-500'}`}>
+                      {heading.label} · {heading.count} student{heading.count === 1 ? '' : 's'}
+                    </td>
+                  </tr>
+                )}
+                <tr className={isDirty ? 'bg-amber-50/50' : ''}>
                   <td className="py-2 pr-3 font-medium text-slate-900 whitespace-nowrap hidden sm:table-cell">{r.college_id}</td>
                   <td className="py-2 pr-3 text-slate-600 whitespace-nowrap hidden sm:table-cell">{r.ru_id || '—'}</td>
                   <td className="py-2 pr-2 sm:pr-3 text-slate-700 sm:min-w-40">
-                    {r.name}
+                    {r.name}{cohorts.get(r.student_id) === 'readd' && <ReaddBadge />}
                     <span className="block text-[11px] leading-tight text-slate-400 sm:hidden">ID {r.college_id}</span>
                     <span className="block text-[11px] leading-tight text-slate-400 sm:hidden">RU {r.ru_id || '—'}</span>
                   </td>
@@ -163,6 +183,7 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
                     </td>
                   ))}
                 </tr>
+                </Fragment>
               );
             })}
             {roster.length === 0 && <tr><td colSpan={3 + count} className="py-10 text-center text-slate-500">No students are enrolled in semester {course.semester} yet.</td></tr>}

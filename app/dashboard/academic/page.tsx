@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
 import { BookOpen, ClipboardList, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { SEMESTERS, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
-import { Button, Card, PageHeader, Tabs, inputClass } from '../../components/ui';
+import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
 import { useToast } from '../../components/Providers';
 import RosterTab from './_components/RosterTab';
 import CtMarksTab from './_components/CtMarksTab';
@@ -25,6 +26,7 @@ export default function AcademicDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('roster');
   const [selectedSemester, setSelectedSemester] = useState('All');
   const [selectedCourseCode, setSelectedCourseCode] = useState('');
+  const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
   const [studentModal, setStudentModal] = useState<{ student?: Student } | null>(null);
 
   const loadData = useCallback(() =>
@@ -60,11 +62,15 @@ export default function AcademicDashboard() {
 
   const showMessage = (msg: string) => (/^(error|⚠️|❌)/i.test(msg) ? toast.error(msg) : toast.success(msg));
 
-  const displayedStudents = selectedSemester === 'All' ? students : students.filter((s) => s.semester.toString() === selectedSemester);
+  const cohorts = useMemo(() => classifyCohorts(students), [students]);
+  const displayedStudents = useMemo(() => orderByCohort(
+    students.filter((s) => (selectedSemester === 'All' || s.semester.toString() === selectedSemester) && matchesCohort(cohortFilter, cohorts.get(s.id))),
+    cohorts,
+  ), [students, selectedSemester, cohortFilter, cohorts]);
   const displayedCourses = selectedSemester === 'All' ? courses : courses.filter((c) => c.semester.toString() === selectedSemester);
   const currentCourse = courses.find((c) => c.course_code === selectedCourseCode);
   const courseMarks = marks.course === selectedCourseCode ? marks.rows : {};
-  const tabKey = `${selectedSemester}:${selectedCourseCode}:${version}`;
+  const tabKey = `${selectedSemester}:${selectedCourseCode}:${cohortFilter}:${version}`;
   const needsCourse = activeTab === 'ct_marks' || activeTab === 'roster';
 
   return (
@@ -96,6 +102,7 @@ export default function AcademicDashboard() {
             <option value="All">All semesters</option>
             {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
           </select>
+          {needsCourse && <CohortSelect value={cohortFilter} onChange={setCohortFilter} className="sm:w-44" />}
           {needsCourse && (
             <select
               value={selectedCourseCode}
@@ -116,6 +123,8 @@ export default function AcademicDashboard() {
           <RosterTab
             key={tabKey}
             students={displayedStudents}
+            cohorts={cohorts}
+            showSemester={selectedSemester === 'All'}
             course={currentCourse}
             marks={courseMarks}
             onChanged={reload}
@@ -124,7 +133,7 @@ export default function AcademicDashboard() {
           />
         )}
         {activeTab === 'ct_marks' && (
-          <CtMarksTab key={tabKey} students={displayedStudents} course={currentCourse} marks={courseMarks} onChanged={reload} showMessage={showMessage} />
+          <CtMarksTab key={tabKey} students={displayedStudents} cohorts={cohorts} course={currentCourse} marks={courseMarks} onChanged={reload} showMessage={showMessage} />
         )}
         {activeTab === 'curriculum' && (
           <CurriculumTab

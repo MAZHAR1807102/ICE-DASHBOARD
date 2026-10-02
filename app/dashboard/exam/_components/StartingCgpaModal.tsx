@@ -9,6 +9,7 @@ import { supabase } from '../../../../utils/supabase';
 import { downloadCsv, toCsv } from '../../../../utils/csv';
 import { loadSpreadsheet } from '../../../../utils/result-sheet-loader';
 import type { AcademicOpening, Student } from '../../../../utils/types';
+import { classifyCohorts, orderByCohort } from '../../../../utils/cohort';
 
 type Roster = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester'>[];
 type Row = { student_id: string; through_semester: number; credits: number; cgpa: number };
@@ -30,9 +31,7 @@ export default function StartingCgpaModal({ students, onClose, onSaved }: { stud
 
   const handleTemplate = () => {
     const current = new Map((openings ?? []).map((o) => [o.student_id, o]));
-    const rows = [...students]
-      .filter((s) => s.semester > 1)
-      .sort((a, b) => a.semester - b.semester || a.college_id.localeCompare(b.college_id))
+    const rows = orderByCohort(students.filter((s) => s.semester > 1), classifyCohorts(students))
       .map((s) => {
         const o = current.get(s.id);
         return [s.college_id, s.ru_id ?? '', s.name, s.semester, o?.through_semester ?? '', o ? Number(o.credits) : '', o ? Number(o.cgpa) : ''];

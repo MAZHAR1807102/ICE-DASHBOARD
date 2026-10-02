@@ -1,19 +1,22 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { ExternalLink, KeyRound, Link2, Mail, Pencil, Save, ShieldCheck, Trash2, Upload, UsersRound } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
 import { parseCsv } from '../../../../utils/csv';
 import { MIN_ATTENDANCE_PERCENT } from '../../../../utils/eligibility';
 import type { Course, CtMark, Student } from '../../../../utils/types';
-import { Badge, Button, EmptyState, cx, inputClass, table } from '../../../components/ui';
+import { Badge, Button, EmptyState, GroupHeading, ReaddBadge, cx, inputClass, table } from '../../../components/ui';
+import { groupHeadings, type Cohort } from '../../../../utils/cohort';
 import { useConfirm } from '../../../components/Providers';
 import SetLoginModal from './SetLoginModal';
 import { attendanceSheetCsv, emailRoster, readFileText, refreshGlobalAttendance } from './shared';
 
 // Remounted (via `key`) whenever the selected course or its marks change, so edits start fresh.
-export default function RosterTab({ students, course, marks, onChanged, showMessage, onEditStudent }: {
-  students: Student[];
+export default function RosterTab({ students, cohorts, showSemester, course, marks, onChanged, showMessage, onEditStudent }: {
+  students: Student[]; // already ordered Regular → Readd
+  cohorts: Map<string, Cohort>;
+  showSemester: boolean;
   course?: Course;
   marks: Record<string, CtMark>;
   onChanged: () => void;
@@ -29,6 +32,7 @@ export default function RosterTab({ students, course, marks, onChanged, showMess
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [loginFor, setLoginFor] = useState<Student | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const headings = useMemo(() => groupHeadings(students, cohorts, showSemester), [students, cohorts, showSemester]);
 
   const handleSaveAttendance = async (studentId: string) => {
     if (!course) return;
@@ -152,10 +156,13 @@ export default function RosterTab({ students, course, marks, onChanged, showMess
               {students.map((student) => {
                 const courseAtt = attendance[student.id] ?? 0;
                 const globalAtt = student.attendance_percentage || 0;
+                const heading = headings.get(student.id);
                 return (
-                  <tr key={student.id} className={table.row}>
+                  <Fragment key={student.id}>
+                  {heading && <GroupHeading colSpan={5} {...heading} />}
+                  <tr className={table.row}>
                     <td className={table.td}>
-                      <p className="font-medium text-slate-900">{student.name}</p>
+                      <p className="font-medium text-slate-900">{student.name}{cohorts.get(student.id) === 'readd' && <ReaddBadge />}</p>
                       <p className="text-xs text-slate-500">{student.college_id} · RU {student.ru_id || '—'} · Sem {student.semester}</p>
                     </td>
                     <td className={`${table.td} text-xs text-slate-500`}>
@@ -196,6 +203,7 @@ export default function RosterTab({ students, course, marks, onChanged, showMess
                       </div>
                     </td>
                   </tr>
+                  </Fragment>
                 );
               })}
             </tbody>

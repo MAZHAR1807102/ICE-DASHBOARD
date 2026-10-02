@@ -179,5 +179,30 @@ export const table = {
   td: 'px-4 py-3',
 };
 
+// Heading row between the Regular and Readd groups in a student table.
+export function GroupHeading({ colSpan, label, count, cohort }: { colSpan: number; label: string; count: number; cohort: 'regular' | 'readd' }) {
+  return (
+    <tr className={cohort === 'readd' ? 'bg-amber-50/70' : 'bg-slate-50'}>
+      <td colSpan={colSpan} className={cx('px-4 py-2 text-xs font-semibold uppercase tracking-wide', cohort === 'readd' ? 'text-amber-800' : 'text-slate-500')}>
+        {label} · {count} student{count === 1 ? '' : 's'}
+      </td>
+    </tr>
+  );
+}
+
+export function ReaddBadge() {
+  return <span className="ml-1.5 inline-flex rounded-full bg-amber-100 px-1.5 py-px align-middle text-[10px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-inset ring-amber-200">Readd</span>;
+}
+
+export function CohortSelect({ value, onChange, className }: { value: 'all' | 'regular' | 'readd'; onChange: (v: 'all' | 'regular' | 'readd') => void; className?: string }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value as 'all' | 'regular' | 'readd')} className={cx(inputClass, className)} aria-label="Regular or Readd">
+      <option value="all">Regular + Readd</option>
+      <option value="regular">Regular only</option>
+      <option value="readd">Readd only</option>
+    </select>
+  );
+}
+
 export const taka = (amount: number) => `৳${Math.round(amount).toLocaleString()}`;
 export { cx };

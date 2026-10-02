@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { classifyCohorts, groupHeadings, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
 import { Ban, CheckCircle2, Clock, FileBadge, FileStack, GraduationCap, History, ScanSearch, Search, Users } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
 import { DEGREE_CREDITS, SEMESTERS, type Student } from '../../../utils/types';
-import { Badge, Button, Card, EmptyState, PageHeader, StatCard, inputClass, table } from '../../components/ui';
+import { Badge, Button, Card, CohortSelect, EmptyState, GroupHeading, PageHeader, ReaddBadge, StatCard, inputClass, table } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
 import PublishResultsModal from './_components/PublishResultsModal';
 import StartingCgpaModal from './_components/StartingCgpaModal';
@@ -22,6 +23,7 @@ export default function ExaminationDashboard() {
   const [students, setStudents] = useState<ExamStudent[]>([]);
   const [selectedSemester, setSelectedSemester] = useState('All');
   const [search, setSearch] = useState('');
+  const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
@@ -75,10 +77,13 @@ export default function ExaminationDashboard() {
   };
 
   const query = search.toLowerCase();
-  const displayedStudents = students.filter((s) =>
+  const cohorts = useMemo(() => classifyCohorts(students), [students]);
+  const displayedStudents = orderByCohort(students.filter((s) =>
     (selectedSemester === 'All' || s.semester.toString() === selectedSemester) &&
+    matchesCohort(cohortFilter, cohorts.get(s.id)) &&
     (!query || s.name.toLowerCase().includes(query) || s.college_id.includes(search) || (s.ru_id ?? '').includes(search)),
-  );
+  ), cohorts);
+  const headings = groupHeadings(displayedStudents, cohorts, selectedSemester === 'All');
   const countBy = (status: string) => displayedStudents.filter((s) => (s.exam_reg_status || 'Pending') === status).length;
 
   return (
@@ -112,6 +117,7 @@ export default function ExaminationDashboard() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID" className={`${inputClass} pl-9`} />
             </div>
+            <CohortSelect value={cohortFilter} onChange={setCohortFilter} className="sm:w-44" />
             <select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={`${inputClass} sm:w-40`} aria-label="Semester">
               <option value="All">All semesters</option>
               {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
@@ -140,10 +146,13 @@ export default function ExaminationDashboard() {
                 {displayedStudents.map((student) => {
                   const attendance = student.attendance_percentage || 0;
                   const status = (student.exam_reg_status || 'Pending') as keyof typeof STATUS_TONE;
+                  const heading = headings.get(student.id);
                   return (
-                    <tr key={student.id} className={table.row}>
+                    <Fragment key={student.id}>
+                    {heading && <GroupHeading colSpan={8} {...heading} />}
+                    <tr className={table.row}>
                       <td className={table.td}>
-                        <p className="font-medium text-slate-900">{student.name}</p>
+                        <p className="font-medium text-slate-900">{student.name}{cohorts.get(student.id) === 'readd' && <ReaddBadge />}</p>
                         <p className="text-xs text-slate-500">{student.college_id} · RU {student.ru_id || '—'} · Sem {student.semester}</p>
                       </td>
                       <td className={`${table.td} text-center`}><Badge tone={attendance < MIN_ATTENDANCE_PERCENT ? 'rose' : 'emerald'}>{attendance}%</Badge></td>
@@ -169,6 +178,7 @@ export default function ExaminationDashboard() {
                         </div>
                       </td>
                     </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
