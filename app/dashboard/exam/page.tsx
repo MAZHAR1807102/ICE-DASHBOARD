@@ -10,6 +10,7 @@ import { useConfirm, useToast } from '../../components/Providers';
 import PublishResultsModal from './_components/PublishResultsModal';
 import StartingCgpaModal from './_components/StartingCgpaModal';
 import PublishedResultsModal from './_components/PublishedResultsModal';
+import StudentResultsModal from './_components/StudentResultsModal';
 
 type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage' | 'cgpa' | 'credits_earned'>;
 
@@ -26,6 +27,7 @@ export default function ExaminationDashboard() {
   const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [isStartingOpen, setIsStartingOpen] = useState(false);
   const [isPublishedOpen, setIsPublishedOpen] = useState(false);
+  const [resultsFor, setResultsFor] = useState<ExamStudent | null>(null);
 
   const fetchExamData = useCallback(() =>
     supabase
@@ -131,7 +133,7 @@ export default function ExaminationDashboard() {
                   <th className={`${table.th} text-center`}>Backlogs</th>
                   <th className={table.th}>Internal marks</th>
                   <th className={table.th}>Registration</th>
-                  <th className={`${table.th} text-right`}>Set status</th>
+                  <th className={`${table.th} text-right`}>Results · status</th>
                 </tr>
               </thead>
               <tbody className={table.body}>
@@ -151,17 +153,20 @@ export default function ExaminationDashboard() {
                       <td className={table.td}><Badge tone={student.internal_marks_status === 'Submitted' ? 'emerald' : 'slate'}>{student.internal_marks_status || 'Pending'}</Badge></td>
                       <td className={table.td}><Badge tone={STATUS_TONE[status] ?? 'amber'} dot>{status === 'Done' ? 'Verified' : status}</Badge></td>
                       <td className={`${table.td} text-right`}>
+                        <div className="flex items-center justify-end gap-1.5">
+                        <Button size="xs" variant="secondary" icon={GraduationCap} onClick={() => setResultsFor(student)}>Results</Button>
                         <select
                           value={status}
                           disabled={updatingId === student.id}
                           onChange={(e) => updateExamStatus(student.id, e.target.value)}
-                          className={`${inputClass} ml-auto h-8 w-36 py-0 text-xs`}
+                          className={`${inputClass} h-8 w-32 py-0 text-xs`}
                           aria-label={`Registration status for ${student.name}`}
                         >
                           <option value="Pending">Pending</option>
                           <option value="Done">Verified</option>
                           <option value="Blocked">Blocked</option>
                         </select>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -172,6 +177,7 @@ export default function ExaminationDashboard() {
         )}
       </Card>
 
+      {resultsFor && <StudentResultsModal student={resultsFor} onClose={() => setResultsFor(null)} onChanged={fetchExamData} />}
       {isPublishedOpen && <PublishedResultsModal onClose={() => setIsPublishedOpen(false)} onChanged={fetchExamData} />}
       {isStartingOpen && <StartingCgpaModal students={students} onClose={() => setIsStartingOpen(false)} onSaved={fetchExamData} />}
 
