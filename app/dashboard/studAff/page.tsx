@@ -29,11 +29,16 @@ export default function StudentAffairsPage() {
     fine: '' as number | ''
   });
   
-  const [editRates, setEditRates] = useState({ monthly: 0, sem: 0, exam: 0, fine: 0 });
+  const [paymentNote, setPaymentNote] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [editRates, setEditRates] = useState({ monthly: 0, sem: 0, exam: 0 });
+  const [adjustment, setAdjustment] = useState({ category: 'monthly', amount: '' as number | '', reason: '' });
+  const [history, setHistory] = useState<any[] | null>(null);
 
   const [modalConfig, setModalConfig] = useState<{
     isOpen: boolean;
-    type: 'payment' | 'rates' | null;
+    type: 'payment' | 'rates' | 'history' | null;
     student: any | null;
   }>({ isOpen: false, type: null, student: null });
 
@@ -108,21 +113,22 @@ export default function StudentAffairsPage() {
       return alert("No students in the current view have attendance below 60%.");
     }
 
-    if (!window.confirm(`Apply 1000 Tk fine to ${targetStudents.length} students with low attendance?`)) {
+    if (!window.confirm(`Apply 1000 Tk fine to ${targetStudents.length} students with low attendance?\n\nStudents already fined this semester are skipped automatically.`)) {
       return;
     }
 
     setLoading(true);
-    for (const student of targetStudents) {
-      if (student.fine_due === 0) {
-        await supabase
-          .from('master_students')
-          .update({ attendance_fine: 1000 })
-          .eq('id', student.id);
-      }
+    const { data, error } = await supabase.rpc('apply_attendance_fines', {
+      p_student_ids: targetStudents.map(s => s.id),
+      p_amount: 1000,
+      p_threshold: 60,
+    });
+
+    if (error) {
+      alert(`Error applying fines: ${error.message}`);
+    } else {
+      alert(`Fined ${data.fined} student(s).\n${data.already_fined} already fined this semester (skipped).`);
     }
-    
-    alert("Attendance fines applied successfully.");
     fetchStudents();
   };
 
@@ -137,31 +143,25 @@ export default function StudentAffairsPage() {
     }
 
     const s = modalConfig.student;
-    let updates: any = {};
 
-    // Calculate deductions for each category simultaneously
-    if (mPay > 0) updates.monthly_due = Math.max(0, s.monthly_due - mPay);
-    if (sPay > 0) updates.semester_due = Math.max(0, s.sem_due - sPay);
-    if (ePay > 0) updates.exam_due = Math.max(0, s.exam_due - ePay);
-    
-    if (fPay > 0) {
-      const newFineDue = Math.max(0, s.fine_due - fPay);
-      const actuallyPaid = s.fine_due - newFineDue; 
-      updates.attendance_fine = newFineDue;
-      updates.total_fines_paid = s.fines_collected + actuallyPaid;
-    }
+    // All lines are saved together as one receipt, or none are (e.g. if one is more than owed).
+    setIsSaving(true);
+    const { data: receiptId, error } = await supabase.rpc('record_payment', {
+      p_student_id: s.id,
+      p_monthly: mPay,
+      p_semester: sPay,
+      p_ru_exam: ePay,
+      p_fine: fPay,
+      p_note: paymentNote,
+    });
+    setIsSaving(false);
 
-    const { error } = await supabase
-      .from('master_students')
-      .update(updates)
-      .eq('id', s.id);
-    
     if (!error) { 
-      alert(`Successfully processed payment(s).`); 
+      alert(`Payment of ৳${mPay + sPay + ePay + fPay} recorded for ${s.name}.\nReceipt: ${String(receiptId).slice(0, 8).toUpperCase()}`); 
       closeModal(); 
       fetchStudents(); 
     } else { 
-      alert(`Error processing payment: ${error.message}`); 
+      alert(`Payment not saved: ${error.message}`); 
     }
   };
 
@@ -172,8 +172,7 @@ export default function StudentAffairsPage() {
       .update({
         agreed_monthly_fee: editRates.monthly,
         agreed_semester_fee: editRates.sem,
-        agreed_ru_exam_fee: editRates.exam,
-        attendance_fine: editRates.fine
+        agreed_ru_exam_fee: editRates.exam
       })
       .eq('id', s.id);
 
@@ -186,64 +185,66 @@ export default function StudentAffairsPage() {
     }
   };
 
+  // Corrections and waivers go into the ledger with a reason; balances are never overwritten.
+  const handleAdjustBalance = async () => {
+    const s = modalConfig.student;
+    const amount = Number(adjustment.amount) || 0;
+    if (amount === 0) return alert('Enter a non-zero amount. Use a negative number to reduce what is owed.');
+    if (!adjustment.reason.trim()) return alert('A reason is required for every correction.');
+
+    setIsSaving(true);
+    const { error } = await supabase.rpc('adjust_balance', {
+      p_student_id: s.id,
+      p_category: adjustment.category,
+      p_amount: amount,
+      p_reason: adjustment.reason,
+    });
+    setIsSaving(false);
+
+    if (!error) {
+      alert(`Correction recorded for ${s.name}.`);
+      closeModal();
+      fetchStudents();
+    } else {
+      alert(`Correction not saved: ${error.message}`);
+    }
+  };
+
+  const openHistory = async (student: any) => {
+    setHistory(null);
+    setModalConfig({ isOpen: true, type: 'history', student });
+    const { data, error } = await supabase
+      .from('finance_transactions')
+      .select('id, category, kind, amount, semester, is_opening, receipt_id, note, created_by_name, created_at')
+      .eq('student_id', student.id)
+      .order('created_at', { ascending: false });
+    if (error) alert(`Could not load history: ${error.message}`);
+    setHistory(data ?? []);
+  };
+
   // --- 1-CLICK MASS BILLING FUNCTION ---
   const handleExecuteMassBill = async (billType: 'Monthly' | 'Semester' | 'RU Exam') => {
     if (filteredStudents.length === 0) return alert("No students found in current filter.");
 
     const multiplier = billType === 'Monthly' ? 6 : 1;
+    const category = billType === 'Monthly' ? 'monthly' : billType === 'Semester' ? 'semester' : 'ru_exam';
 
-    if (!window.confirm(`Are you sure you want to bill ${billType} to all ${filteredStudents.length} filtered students?\n\nThis multiplies their base rate by ${multiplier} and adds it to their running total.`)) {
+    if (!window.confirm(`Are you sure you want to bill ${billType} to all ${filteredStudents.length} filtered students?\n\nThis multiplies their base rate by ${multiplier} and adds it to their running total.\nStudents already billed ${billType} for their current semester are skipped automatically.`)) {
       return;
     }
 
     setLoading(true);
-    let successCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
+    const { data, error } = await supabase.rpc('bill_students', {
+      p_student_ids: filteredStudents.map(s => s.id),
+      p_category: category,
+    });
 
-    for (const student of filteredStudents) {
-      let fieldToUpdate = '';
-      let amountToAdd = 0;
-      let currentAmount = 0;
-
-      if (billType === 'Monthly') {
-        fieldToUpdate = 'monthly_due';
-        amountToAdd = student.base_monthly * 6; // Adds 6 months!
-        currentAmount = student.monthly_due;
-      } else if (billType === 'Semester') {
-        fieldToUpdate = 'semester_due';
-        amountToAdd = student.base_sem * 1; // Adds 1 semester!
-        currentAmount = student.sem_due;
-      } else if (billType === 'RU Exam') {
-        fieldToUpdate = 'exam_due';
-        amountToAdd = student.base_exam * 1; // Adds 1 RU Exam!
-        currentAmount = student.exam_due;
-      }
-
-      // Only hit the database if there is actually money to add
-      if (amountToAdd > 0) {
-        const { error } = await supabase
-          .from('master_students')
-          .update({ [fieldToUpdate]: currentAmount + amountToAdd })
-          .eq('id', student.id);
-        
-        if (error) {
-          errorCount++;
-        } else {
-          successCount++;
-        }
-      } else {
-        skippedCount++;
-      }
-    }
-
-    // Explicit error/success reporting
-    if (errorCount > 0) {
-      alert(`Database Error! Failed to bill ${errorCount} students. Did you run the SQL command to add the columns?`);
-    } else if (skippedCount === filteredStudents.length) {
-      alert(`⚠️ NO STUDENTS BILLED.\n\nAll ${skippedCount} students were skipped because their base rate is 0.\nYou MUST use the 'Edit Dues' button to set their contract rates first!`);
+    if (error) {
+      alert(`Billing failed — no one was billed.\n${error.message}`);
+    } else if (data.billed === 0 && data.already_billed === 0) {
+      alert(`⚠️ NO STUDENTS BILLED.\n\nAll ${data.skipped_zero_rate} students were skipped because their base rate is 0.\nYou MUST use the 'Edit Dues' button to set their contract rates first!`);
     } else {
-      alert(`Mass billing successfully applied to ${successCount} students!\n(${skippedCount} skipped because their base rate was 0).`);
+      alert(`${billType} billing applied to ${data.billed} student(s).\n${data.already_billed} already billed this semester (skipped).\n${data.skipped_zero_rate} skipped because their base rate is 0.`);
     }
 
     fetchStudents();
@@ -290,21 +291,25 @@ export default function StudentAffairsPage() {
   const openModal = (type: 'payment' | 'rates', student: any = null) => {
     // Reset all 4 payment boxes
     setPaymentAmounts({ monthly: '', sem: '', exam: '', fine: '' }); 
+    setPaymentNote('');
+    setAdjustment({ category: 'monthly', amount: '', reason: '' });
     
     // Pre-fill the base rates if opening the Edit Dues modal
     if (type === 'rates' && student) {
       setEditRates({
         monthly: student.base_monthly,
         sem: student.base_sem,
-        exam: student.base_exam,
-        fine: student.fine_due // Fine is a running balance, so we keep it here for manual override
+        exam: student.base_exam
       });
     }
 
     setModalConfig({ isOpen: true, type, student });
   };
 
-  const closeModal = () => setModalConfig({ isOpen: false, type: null, student: null });
+  const closeModal = () => {
+    setModalConfig({ isOpen: false, type: null, student: null });
+    setHistory(null);
+  };
 
   return (
     <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
@@ -489,6 +494,12 @@ export default function StudentAffairsPage() {
                             Payment
                           </button>
                           <button 
+                            onClick={() => openHistory(s)} 
+                            className="px-3 py-1 bg-white text-slate-600 border border-slate-300 hover:bg-slate-100 rounded text-xs font-bold transition-colors"
+                          >
+                            History
+                          </button>
+                          <button 
                             onClick={() => openModal('rates', s)} 
                             className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 rounded text-xs font-bold transition-colors"
                           >
@@ -511,10 +522,10 @@ export default function StudentAffairsPage() {
       {/* MODAL SYSTEM */}
       {modalConfig.isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className={`bg-white rounded-2xl shadow-2xl w-full ${modalConfig.type === 'history' ? 'max-w-3xl' : 'max-w-md'} overflow-hidden animate-in fade-in zoom-in duration-200`}>
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <h3 className="font-bold text-slate-800 text-lg">
-                {modalConfig.type === 'payment' ? 'Receive Payments' : 'Set Contract Dues'}
+                {modalConfig.type === 'payment' ? 'Receive Payments' : modalConfig.type === 'history' ? `Payment History — ${modalConfig.student?.name}` : 'Set Contract Dues'}
               </h3>
               <button onClick={closeModal} className="text-slate-400 hover:text-slate-700 font-bold text-xl">×</button>
             </div>
@@ -572,11 +583,23 @@ export default function StudentAffairsPage() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Note (optional)</label>
+                    <input 
+                      type="text" 
+                      value={paymentNote} 
+                      onChange={(e) => setPaymentNote(e.target.value)} 
+                      className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
+                      placeholder="e.g. Cash, bKash TrxID…" 
+                    />
+                  </div>
+
                   <button 
                     onClick={handleReceivePayment} 
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors"
+                    disabled={isSaving}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors disabled:opacity-50"
                   >
-                    Confirm & Save Receipts
+                    {isSaving ? 'Saving...' : 'Confirm & Save Receipts'}
                   </button>
                 </div>
               )}
@@ -614,22 +637,98 @@ export default function StudentAffairsPage() {
                       className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-rose-600 mb-1">Running Fine Balance (Manual Override)</label>
-                    <input 
-                      type="number" 
-                      value={editRates.fine} 
-                      onChange={(e) => setEditRates({...editRates, fine: Number(e.target.value)})} 
-                      className="w-full border-rose-300 bg-rose-50 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-rose-500" 
-                    />
-                  </div>
-                  
                   <button 
                     onClick={handleUpdateRates} 
                     className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors"
                   >
                     Save Contract Dues
                   </button>
+
+                  <div className="border-t border-slate-200 pt-4 mt-6 space-y-3">
+                    <p className="text-sm font-bold text-slate-800">Correct a Balance</p>
+                    <p className="text-xs text-slate-500">For waivers or fixing mistakes. Use a negative amount to reduce what is owed. Every correction is kept in the history with its reason.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <select 
+                        value={adjustment.category} 
+                        onChange={(e) => setAdjustment({...adjustment, category: e.target.value})} 
+                        className="border-slate-300 border rounded-lg p-2 bg-white outline-none focus:ring-2 focus:ring-slate-500"
+                      >
+                        <option value="monthly">Monthly (owes ৳{modalConfig.student?.monthly_due})</option>
+                        <option value="semester">Semester (owes ৳{modalConfig.student?.sem_due})</option>
+                        <option value="ru_exam">RU Exam (owes ৳{modalConfig.student?.exam_due})</option>
+                        <option value="fine">Fine (owes ৳{modalConfig.student?.fine_due})</option>
+                      </select>
+                      <input 
+                        type="number" 
+                        value={adjustment.amount} 
+                        onChange={(e) => setAdjustment({...adjustment, amount: e.target.value ? Number(e.target.value) : ''})} 
+                        className="border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-slate-500" 
+                        placeholder="e.g. -1000" 
+                      />
+                    </div>
+                    <input 
+                      type="text" 
+                      value={adjustment.reason} 
+                      onChange={(e) => setAdjustment({...adjustment, reason: e.target.value})} 
+                      className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-slate-500" 
+                      placeholder="Reason (required) — e.g. Merit scholarship waiver" 
+                    />
+                    <button 
+                      onClick={handleAdjustBalance} 
+                      disabled={isSaving}
+                      className="w-full bg-white border border-slate-400 hover:bg-slate-50 text-slate-800 font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSaving ? 'Saving...' : 'Record Correction'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* HISTORY CONTEXT */}
+              {modalConfig.type === 'history' && (
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {history === null ? (
+                    <p className="text-center text-slate-500 py-8">Loading history...</p>
+                  ) : history.length === 0 ? (
+                    <p className="text-center text-slate-500 py-8">No transactions yet.</p>
+                  ) : (
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-xs text-slate-500 uppercase border-b border-slate-200">
+                        <tr>
+                          <th className="py-2 pr-3">Date</th>
+                          <th className="py-2 pr-3">Type</th>
+                          <th className="py-2 pr-3 text-right">Amount</th>
+                          <th className="py-2 pr-3">Details</th>
+                          <th className="py-2">By</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {history.map((t) => {
+                          const label = { monthly: 'Monthly', semester: 'Semester', ru_exam: 'RU Exam', fine: 'Fine' }[t.category as string];
+                          const isPayment = t.kind === 'payment';
+                          const reducesDue = isPayment || Number(t.amount) < 0;
+                          const kindLabel = t.is_opening ? 'Opening balance' : t.kind === 'charge' ? 'Charge' : isPayment ? 'Payment' : 'Correction';
+                          return (
+                            <tr key={t.id}>
+                              <td className="py-2 pr-3 whitespace-nowrap text-slate-600">{new Date(t.created_at).toLocaleDateString()}</td>
+                              <td className="py-2 pr-3 whitespace-nowrap">
+                                <span className="font-bold text-slate-800">{label}</span>
+                                <span className="text-slate-500"> · {kindLabel}</span>
+                              </td>
+                              <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${reducesDue ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {reducesDue ? '−' : '+'}৳{Math.abs(Number(t.amount)).toLocaleString()}
+                              </td>
+                              <td className="py-2 pr-3 text-slate-600">
+                                {t.note}
+                                {t.receipt_id && <span className="text-xs text-slate-400"> (Receipt {String(t.receipt_id).slice(0, 8).toUpperCase()})</span>}
+                              </td>
+                              <td className="py-2 text-slate-500 whitespace-nowrap">{t.created_by_name || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               )}
             </div>

@@ -166,12 +166,15 @@ export default function AcademicDashboard() {
 
   const handleSaveStudent = async () => {
     if (!studentForm.name || !studentForm.college_id) return alert("Name and College ID are required.");
+    // Only send the fields this form edits — balances are managed by the finance ledger.
+    const { college_id, ru_id, name, semester, advisor, student_contact, guardian_contact } = studentForm;
+    const fields = { college_id, ru_id, name, semester, advisor, student_contact, guardian_contact };
     if (modalConfig.type === 'add_student') {
-      const { error } = await supabase.from('master_students').insert([studentForm]);
+      const { error } = await supabase.from('master_students').insert([fields]);
       if (!error) { showMessage('Student added successfully.'); setModalConfig({ isOpen: false, type: null, targetId: null }); fetchData(); } 
       else showMessage(`Error: ${error.message}`);
     } else if (modalConfig.type === 'edit_student' && modalConfig.targetId) {
-      const { error } = await supabase.from('master_students').update(studentForm).eq('id', modalConfig.targetId);
+      const { error } = await supabase.from('master_students').update(fields).eq('id', modalConfig.targetId);
       if (!error) { showMessage('Student updated successfully.'); setModalConfig({ isOpen: false, type: null, targetId: null }); fetchData(); } 
       else showMessage(`Error: ${error.message}`);
     }
@@ -194,7 +197,9 @@ export default function AcademicDashboard() {
   const handleDeleteStudent = async (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to permanently delete student: ${name}?`)) {
       const { error } = await supabase.from('master_students').delete().eq('id', id);
-      if (!error) { showMessage(`${name} has been deleted.`); fetchData(); } else showMessage(`Error: ${error.message}`);
+      if (!error) { showMessage(`${name} has been deleted.`); fetchData(); }
+      else if (error.code === '23503') showMessage(`${name} has payment or marks history and can't be deleted — financial records must be kept.`);
+      else showMessage(`Error: ${error.message}`);
     }
   };
 
