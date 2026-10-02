@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
-import { BookOpen, ClipboardList, Megaphone, UserPlus, UsersRound } from 'lucide-react';
+import { BookOpen, ClipboardList, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { SEMESTERS, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
 import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
@@ -12,6 +12,7 @@ import CtMarksTab from './_components/CtMarksTab';
 import CurriculumTab from './_components/CurriculumTab';
 import NoticesTab from './_components/NoticesTab';
 import StudentModal from './_components/StudentModal';
+import ImportDetailsModal from './_components/ImportDetailsModal';
 
 type Tab = 'roster' | 'ct_marks' | 'curriculum' | 'notices';
 
@@ -28,6 +29,7 @@ export default function AcademicDashboard() {
   const [selectedCourseCode, setSelectedCourseCode] = useState('');
   const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
   const [studentModal, setStudentModal] = useState<{ student?: Student } | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const loadData = useCallback(() =>
     Promise.all([
@@ -78,7 +80,10 @@ export default function AcademicDashboard() {
       <PageHeader
         title="Academic Coordination"
         description="Students, courses, attendance, CT marks and notices."
-        actions={<Button icon={UserPlus} onClick={() => setStudentModal({})}>Add student</Button>}
+        actions={<>
+          <Button variant="secondary" icon={FileInput} onClick={() => setIsImportOpen(true)}>Import details</Button>
+          <Button icon={UserPlus} onClick={() => setStudentModal({})}>Add student</Button>
+        </>}
       />
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -148,6 +153,9 @@ export default function AcademicDashboard() {
         {activeTab === 'notices' && <NoticesTab notices={notices} onChanged={reload} showMessage={showMessage} />}
       </Card>
 
+      {isImportOpen && (
+        <ImportDetailsModal students={students} onClose={() => setIsImportOpen(false)} onSaved={(msg) => { showMessage(msg); setIsImportOpen(false); reload(); }} />
+      )}
       {studentModal && (
         <StudentModal
           student={studentModal.student}
