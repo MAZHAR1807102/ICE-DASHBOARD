@@ -99,13 +99,7 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
       credit: Number(credits[code]),
       grade: s.grades[code],
     })));
-    const { error: courseError } = courseRows.length
-      ? await supabase.from('course_results').upsert(courseRows, { onConflict: 'student_id,semester,course_code,exam_key' })
-      : { error: null };
-
-    let summaryError = null;
-    if (!courseError && sheet.hasOfficialFigures) {
-      const summaryRows = matched.map((s) => ({
+    const summaryRows = !sheet.hasOfficialFigures ? [] : matched.map((s) => ({
         student_id: byRoll.get(s.roll)!.id,
         semester,
         exam_key: key,
@@ -117,12 +111,11 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
         result_status: s.result ?? null,
         merit_position: s.merit ?? null,
       }));
-      ({ error: summaryError } = await supabase.from('semester_results').upsert(summaryRows, { onConflict: 'student_id,semester,exam_key' }));
-    }
+    // One database step: grades and official figures are saved together, or nothing is.
+    const { error } = await supabase.rpc('publish_results', { p_courses: courseRows, p_summaries: summaryRows });
     setIsPublishing(false);
 
-    const failure = courseError ?? summaryError;
-    if (failure) return toast.error(`Results not published: ${failure.message}`);
+    if (error) return toast.error(`Results not published — nothing was saved.\n${error.message}`);
     onPublished(`Published semester ${semester} results for ${matched.length} students (${gradeCount} grades).`);
   };
 
@@ -230,6 +223,13 @@ export default function RuSheetImport({ students, onPublished }: { students: Ros
           <p className="mt-2 text-xs text-slate-500">Usually students of other colleges on the same sheet. If one of ours is here, check their RU ID in the Academic portal.</p>
           <p className="mt-1 font-mono text-xs text-slate-600">{unmatched.map((s) => s.roll).join(', ')}</p>
         </details>
+      )}
+
+      {sheet.merged.length > 0 && (
+        <p className="flex items-start gap-2 rounded-xl bg-sky-50 px-3 py-2.5 text-xs text-sky-900 ring-1 ring-sky-200">
+          <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {sheet.merged.length} roll{sheet.merged.length === 1 ? ' appears' : 's appear'} on more than one row (common on retake / improvement sheets) — combined into one student each{sheet.merged.length <= 6 ? `: ${sheet.merged.join(', ')}` : ''}.
+        </p>
       )}
 
       {sheet.problems.length > 0 && (

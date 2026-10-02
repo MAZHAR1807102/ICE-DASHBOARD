@@ -90,3 +90,15 @@ Rules it applies (F = 0.00 matches every GPA on RU's own sheets):
 - An F counts as 0.00 until a better attempt replaces it.
 - Exams → **Earlier results**: a starting CGPA ("through semester N, X credits, CGPA Y") for
   semesters published before the portal. Uploaded results after semester N are added on top.
+
+---
+
+# Atomic result publishing (008)
+
+Run **before** deploying the matching code — Publish Results calls `publish_results()`.
+
+1. Supabase → SQL Editor → run `migrations/008_publish_results_atomic.sql`.
+2. Deploy the code.
+3. Re-upload any sheet that failed with "ON CONFLICT DO UPDATE command cannot affect row a second
+   time" (the semester 1 improvement sheet): its grades were saved but its official figures weren't.
+   Re-uploading the same file replaces the grades and adds the missing figures — no duplicates.
