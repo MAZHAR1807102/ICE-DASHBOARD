@@ -5,6 +5,7 @@ import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
 import { SEMESTERS, type Student } from '../../../utils/types';
 import PortalHeader from '../../components/PortalHeader';
+import PublishResultsModal from './_components/PublishResultsModal';
 
 type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage'>;
 
@@ -19,6 +20,7 @@ export default function ExaminationDashboard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [message, setMessage] = useState('');
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
 
   const fetchExamData = useCallback(() =>
     supabase
@@ -106,7 +108,7 @@ export default function ExaminationDashboard() {
             {isChecking ? 'Checking...' : '🔍 Auto-Check Eligibility'}
           </button>
           <button disabled title="Coming soon" className="px-4 py-2 rounded text-sm font-medium text-gray-500 bg-gray-200 cursor-not-allowed">📄 Generate Admit Cards (coming soon)</button>
-          <button disabled title="Coming soon" className="px-4 py-2 rounded text-sm font-medium text-gray-500 bg-gray-200 cursor-not-allowed">📊 Coordinate Tabulation (coming soon)</button>
+          <button onClick={() => setIsPublishOpen(true)} className="px-4 py-2 rounded text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 shadow-sm">📊 Publish Results</button>
         </div>
 
         <div className="overflow-x-auto">
@@ -154,6 +156,14 @@ export default function ExaminationDashboard() {
           </table>
         </div>
       </div>
+
+      {isPublishOpen && (
+        <PublishResultsModal
+          students={students}
+          onClose={() => setIsPublishOpen(false)}
+          onPublished={(msg) => { setIsPublishOpen(false); setMessage(msg); fetchExamData(); setTimeout(() => setMessage(''), 5000); }}
+        />
+      )}
     </div>
   );
 }
