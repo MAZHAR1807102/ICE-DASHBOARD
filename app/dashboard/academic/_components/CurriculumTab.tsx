@@ -17,6 +17,30 @@ export default function CurriculumTab({ courses, selectedSemester, onChanged, sh
   const defaultForm = (): CourseForm => ({ semester: parseInt(selectedSemester) || 1, credit: 3 });
   const [newCourse, setNewCourse] = useState<CourseForm>(defaultForm);
   const [editing, setEditing] = useState<Course | null>(null);
+  const [sendingFor, setSendingFor] = useState<string | null>(null);
+
+  // Emails each course teacher a sign-in link to the Teacher Portal, where they enter CT marks.
+  const sendTeacherLinks = async (targets: Course[], key: string) => {
+    const withEmail = targets.filter((c) => c.teacher_email);
+    if (withEmail.length === 0) return alert('None of these courses has a teacher email. Edit the course to add one.');
+    const teachers = new Set(withEmail.map((c) => c.teacher_email!.toLowerCase())).size;
+    if (!window.confirm(`Email a CT-entry link to ${teachers} teacher${teachers === 1 ? '' : 's'} for ${withEmail.length} course${withEmail.length === 1 ? '' : 's'}?`)) return;
+
+    setSendingFor(key);
+    const response = await fetch('/api/teacher/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseIds: withEmail.map((c) => c.id) }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setSendingFor(null);
+
+    if (!response.ok) return showMessage(`⚠️ ${result.error ?? 'Could not send links.'}`);
+    const parts = [`✅ Sent to ${result.sent.length} teacher${result.sent.length === 1 ? '' : 's'}`];
+    if (result.failed.length) parts.push(`failed: ${result.failed.join(', ')}`);
+    if (result.missingEmail.length) parts.push(`no email: ${result.missingEmail.join(', ')}`);
+    showMessage(parts.join(' · '));
+  };
 
   const handleCreate = async () => {
     if (!newCourse.course_code || !newCourse.course_name) return alert('Course Code and Name are required.');
@@ -86,7 +110,18 @@ export default function CurriculumTab({ courses, selectedSemester, onChanged, sh
       </div>
 
       <div>
-        <h3 className="text-lg font-bold text-slate-800 mb-4">Course Catalog {selectedSemester !== 'All' ? `(Semester ${selectedSemester})` : ''}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-lg font-bold text-slate-800">Course Catalog {selectedSemester !== 'All' ? `(Semester ${selectedSemester})` : ''}</h3>
+          {courses.length > 0 && (
+            <button
+              onClick={() => sendTeacherLinks(courses, 'all')}
+              disabled={sendingFor !== null}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm disabled:opacity-50"
+            >
+              {sendingFor === 'all' ? 'Sending…' : `📧 Email CT links to teachers (${courses.length} courses)`}
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {courses.map((c) => (
             <div key={c.id} className="p-5 border border-slate-200 rounded-xl shadow-sm bg-white hover:shadow-md transition-shadow group">
@@ -97,14 +132,27 @@ export default function CurriculumTab({ courses, selectedSemester, onChanged, sh
               <h4 className="font-extrabold text-slate-900 text-lg mt-2">{c.course_code}</h4>
               <p className="font-medium text-slate-700 text-sm mb-3">{c.course_name}</p>
               <div className="pt-3 border-t border-slate-100 flex justify-between items-end">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Instructor</p>
                   <p className="text-sm font-medium text-slate-800">{c.teacher_name}</p>
+                  <p className="text-xs text-slate-500 truncate">{c.teacher_email || 'No email — add one to send CT links'}</p>
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity flex space-x-2">
                   <button onClick={() => setEditing(c)} className="p-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 text-xs font-bold">Edit</button>
                   <button onClick={() => handleDelete(c)} className="p-1.5 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 text-xs font-bold">Del</button>
                 </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                <span className={`text-xs font-bold ${c.ct_saved_at ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {c.ct_saved_at
+                    ? `CT marks saved ${new Date(c.ct_saved_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${c.ct_saved_by ? ` by ${c.ct_saved_by}` : ''}`
+                    : 'CT marks not submitted yet'}
+                </span>
+                {c.teacher_email && (
+                  <button onClick={() => sendTeacherLinks([c], c.id)} disabled={sendingFor !== null} className="shrink-0 text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50">
+                    {sendingFor === c.id ? 'Sending…' : 'Send link'}
+                  </button>
+                )}
               </div>
             </div>
           ))}

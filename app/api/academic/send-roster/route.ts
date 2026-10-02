@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import { requireRole } from '../../../../utils/supabase-server';
+import { sendMail } from '../../../../utils/mailer';
 
 export async function POST(request: Request) {
   const auth = await requireRole(['academic', 'hod']);
@@ -20,16 +20,7 @@ export async function POST(request: Request) {
       : 'Please fill out the CT marks in the provided columns';
     const sheetLine = isAttendance && sheetUrl ? `\n\nShared attendance sheet: ${sheetUrl}` : '';
 
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: `"CSE Academic Coordination" <${process.env.EMAIL_USER}>`,
+    await sendMail({
       to: teacherEmail,
       subject: `${sheetName}: ${courseCode} - ${courseName}`,
       text: `Dear ${teacherName || 'Instructor'},\n\nPlease find attached the ${sheetName.toLowerCase()} for ${courseCode} (${courseName}).\n\n${instructions} and return the CSV file to the Academic Coordinator for direct system upload.${sheetLine}\n\nBest regards,\nDepartment of CSE\nImperial College of Engineering`,
