@@ -1,242 +1,79 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../utils/supabase';
-import { changePassword, getSessionUser, signOut } from '../../../utils/session';
-import { useRouter } from 'next/navigation';
+import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
+import { SEMESTERS, totalDue, type Student } from '../../../utils/types';
+import PortalHeader from '../../components/PortalHeader';
+import LedgerTable from './_components/LedgerTable';
+import PaymentModal from './_components/PaymentModal';
+import DuesModal from './_components/DuesModal';
+import HistoryModal from './_components/HistoryModal';
+
+type BillType = 'Monthly' | 'Semester' | 'RU Exam';
+const BILL_CATEGORY: Record<BillType, string> = { Monthly: 'monthly', Semester: 'semester', 'RU Exam': 'ru_exam' };
+const ATTENDANCE_FINE = 1000;
 
 export default function StudentAffairsPage() {
-  const router = useRouter();
-
-  // --- AUTH & PASSWORD STATE ---
-  const [teacherName, setTeacherName] = useState('Loading Faculty...');
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-
-  // --- STATE MANAGEMENT ---
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
-  
   const [searchQuery, setSearchQuery] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('All');
-  
-  // NEW: 4-in-1 Payment Processing States
-  const [paymentAmounts, setPaymentAmounts] = useState({
-    monthly: '' as number | '',
-    sem: '' as number | '',
-    exam: '' as number | '',
-    fine: '' as number | ''
-  });
-  
-  const [paymentNote, setPaymentNote] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
+  const [modal, setModal] = useState<{ type: 'payment' | 'dues' | 'history'; student: Student } | null>(null);
 
-  const [editRates, setEditRates] = useState({ monthly: 0, sem: 0, exam: 0 });
-  const [adjustment, setAdjustment] = useState({ category: 'monthly', amount: '' as number | '', reason: '' });
-  const [history, setHistory] = useState<any[] | null>(null);
-
-  const [modalConfig, setModalConfig] = useState<{
-    isOpen: boolean;
-    type: 'payment' | 'rates' | 'history' | null;
-    student: any | null;
-  }>({ isOpen: false, type: null, student: null });
-
-  // --- INITIALIZATION ---
-  useEffect(() => {
-    getSessionUser().then((user) => setTeacherName(user?.name ?? ''));
-
-    fetchStudents();
-  }, [router]);
-
-  async function fetchStudents() {
-    setLoading(true);
-    const { data, error } = await supabase
+  const fetchStudents = useCallback(() =>
+    supabase
       .from('master_students')
       .select('*')
-      .order('ru_id', { ascending: false });
+      .order('ru_id', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) alert(`Could not load students: ${error.message}`);
+        else setStudents(data as Student[]);
+        setLoading(false);
+      }), []);
 
-    if (!error && data) {
-      const formattedData = data.map(s => ({
-        id: s.id,
-        college_id: s.college_id,
-        ru_id: s.ru_id || 'N/A',
-        name: s.name,
-        semester: s.semester,
-        attendance_percentage: s.attendance_percentage || 0,
-        
-        // Base Contract Rates (Set via Edit Dues)
-        base_monthly: s.agreed_monthly_fee || 0,
-        base_sem: s.agreed_semester_fee || 0,
-        base_exam: s.agreed_ru_exam_fee || 0,
-        
-        // Running Balances (What they actually owe right now)
-        monthly_due: s.monthly_due || 0,
-        sem_due: s.semester_due || 0,
-        exam_due: s.exam_due || 0,
-        fine_due: s.attendance_fine || 0,
-        fines_collected: s.total_fines_paid || 0 
-      }));
-      setStudents(formattedData);
-    }
-    setLoading(false);
-  }
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
 
-  // --- AUTHENTICATION ACTIONS ---
-  const handleLogout = () => {
-    signOut('/login');
-  };
-
-  const handleUpdatePassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      return alert('Password must be at least 6 characters long.');
-    }
-    
-    setIsUpdatingPassword(true);
-    const { error } = await changePassword(newPassword);
-
-    if (!error) {
-      alert('Password updated successfully!');
-      setIsPasswordModalOpen(false);
-      setNewPassword('');
-    } else {
-      alert(`Error updating password: ${error.message}`);
-    }
-    setIsUpdatingPassword(false);
-  };
-
-  // --- FINANCIAL ACTIONS ---
-  const handleApplyAttendanceFines = async () => {
-    const targetStudents = filteredStudents.filter(s => s.attendance_percentage < 60);
-    
-    if (targetStudents.length === 0) {
-      return alert("No students in the current view have attendance below 60%.");
-    }
-
-    if (!window.confirm(`Apply 1000 Tk fine to ${targetStudents.length} students with low attendance?\n\nStudents already fined this semester are skipped automatically.`)) {
-      return;
-    }
-
-    setLoading(true);
-    const { data, error } = await supabase.rpc('apply_attendance_fines', {
-      p_student_ids: targetStudents.map(s => s.id),
-      p_amount: 1000,
-      p_threshold: 60,
+  const filteredStudents = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return students.filter((s) => {
+      const matchesSearch = s.name.toLowerCase().includes(query) || s.college_id.includes(searchQuery) || (s.ru_id ?? '').includes(searchQuery);
+      const matchesSem = semesterFilter === 'All' || s.semester.toString() === semesterFilter;
+      return matchesSearch && matchesSem;
     });
+  }, [students, searchQuery, semesterFilter]);
 
-    if (error) {
-      alert(`Error applying fines: ${error.message}`);
-    } else {
-      alert(`Fined ${data.fined} student(s).\n${data.already_fined} already fined this semester (skipped).`);
-    }
+  const metrics = useMemo(() => {
+    const sum = (pick: (s: Student) => number) => filteredStudents.reduce((total, s) => total + pick(s), 0);
+    const cleared = filteredStudents.filter((s) => totalDue(s) === 0).length;
+    return {
+      totalStudents: filteredStudents.length,
+      cleared,
+      pending: filteredStudents.length - cleared,
+      monthly: sum((s) => s.monthly_due || 0),
+      semExam: sum((s) => (s.semester_due || 0) + (s.exam_due || 0)),
+      finesCollected: sum((s) => s.total_fines_paid || 0),
+      grandTotalDue: sum(totalDue),
+    };
+  }, [filteredStudents]);
+
+  const afterSave = () => {
+    setModal(null);
     fetchStudents();
   };
 
-  const handleReceivePayment = async () => {
-    const mPay = Number(paymentAmounts.monthly) || 0;
-    const sPay = Number(paymentAmounts.sem) || 0;
-    const ePay = Number(paymentAmounts.exam) || 0;
-    const fPay = Number(paymentAmounts.fine) || 0;
-
-    if (mPay === 0 && sPay === 0 && ePay === 0 && fPay === 0) {
-      return alert("Please enter at least one valid payment amount.");
-    }
-
-    const s = modalConfig.student;
-
-    // All lines are saved together as one receipt, or none are (e.g. if one is more than owed).
-    setIsSaving(true);
-    const { data: receiptId, error } = await supabase.rpc('record_payment', {
-      p_student_id: s.id,
-      p_monthly: mPay,
-      p_semester: sPay,
-      p_ru_exam: ePay,
-      p_fine: fPay,
-      p_note: paymentNote,
-    });
-    setIsSaving(false);
-
-    if (!error) { 
-      alert(`Payment of ৳${mPay + sPay + ePay + fPay} recorded for ${s.name}.\nReceipt: ${String(receiptId).slice(0, 8).toUpperCase()}`); 
-      closeModal(); 
-      fetchStudents(); 
-    } else { 
-      alert(`Payment not saved: ${error.message}`); 
-    }
-  };
-
-  const handleUpdateRates = async () => {
-    const s = modalConfig.student;
-    const { error } = await supabase
-      .from('master_students')
-      .update({
-        agreed_monthly_fee: editRates.monthly,
-        agreed_semester_fee: editRates.sem,
-        agreed_ru_exam_fee: editRates.exam
-      })
-      .eq('id', s.id);
-
-    if (!error) {
-      alert(`Contract Dues successfully set for ${s.name}.`);
-      closeModal();
-      fetchStudents();
-    } else {
-      alert(`Error updating dues: ${error.message}`);
-    }
-  };
-
-  // Corrections and waivers go into the ledger with a reason; balances are never overwritten.
-  const handleAdjustBalance = async () => {
-    const s = modalConfig.student;
-    const amount = Number(adjustment.amount) || 0;
-    if (amount === 0) return alert('Enter a non-zero amount. Use a negative number to reduce what is owed.');
-    if (!adjustment.reason.trim()) return alert('A reason is required for every correction.');
-
-    setIsSaving(true);
-    const { error } = await supabase.rpc('adjust_balance', {
-      p_student_id: s.id,
-      p_category: adjustment.category,
-      p_amount: amount,
-      p_reason: adjustment.reason,
-    });
-    setIsSaving(false);
-
-    if (!error) {
-      alert(`Correction recorded for ${s.name}.`);
-      closeModal();
-      fetchStudents();
-    } else {
-      alert(`Correction not saved: ${error.message}`);
-    }
-  };
-
-  const openHistory = async (student: any) => {
-    setHistory(null);
-    setModalConfig({ isOpen: true, type: 'history', student });
-    const { data, error } = await supabase
-      .from('finance_transactions')
-      .select('id, category, kind, amount, semester, is_opening, receipt_id, note, created_by_name, created_at')
-      .eq('student_id', student.id)
-      .order('created_at', { ascending: false });
-    if (error) alert(`Could not load history: ${error.message}`);
-    setHistory(data ?? []);
-  };
-
-  // --- 1-CLICK MASS BILLING FUNCTION ---
-  const handleExecuteMassBill = async (billType: 'Monthly' | 'Semester' | 'RU Exam') => {
-    if (filteredStudents.length === 0) return alert("No students found in current filter.");
-
+  // --- MASS ACTIONS (each is one all-or-nothing database call) ---
+  const handleMassBill = async (billType: BillType) => {
+    if (filteredStudents.length === 0) return alert('No students found in current filter.');
     const multiplier = billType === 'Monthly' ? 6 : 1;
-    const category = billType === 'Monthly' ? 'monthly' : billType === 'Semester' ? 'semester' : 'ru_exam';
-
-    if (!window.confirm(`Are you sure you want to bill ${billType} to all ${filteredStudents.length} filtered students?\n\nThis multiplies their base rate by ${multiplier} and adds it to their running total.\nStudents already billed ${billType} for their current semester are skipped automatically.`)) {
-      return;
-    }
+    if (!window.confirm(`Are you sure you want to bill ${billType} to all ${filteredStudents.length} filtered students?\n\nThis multiplies their base rate by ${multiplier} and adds it to their running total.\nStudents already billed ${billType} for their current semester are skipped automatically.`)) return;
 
     setLoading(true);
     const { data, error } = await supabase.rpc('bill_students', {
-      p_student_ids: filteredStudents.map(s => s.id),
-      p_category: category,
+      p_student_ids: filteredStudents.map((s) => s.id),
+      p_category: BILL_CATEGORY[billType],
     });
 
     if (error) {
@@ -246,110 +83,36 @@ export default function StudentAffairsPage() {
     } else {
       alert(`${billType} billing applied to ${data.billed} student(s).\n${data.already_billed} already billed this semester (skipped).\n${data.skipped_zero_rate} skipped because their base rate is 0.`);
     }
-
     fetchStudents();
   };
 
-  // --- DERIVED METRICS & FILTERING ---
-  const filteredStudents = useMemo(() => {
-    return students.filter(s => {
-      const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            s.college_id.includes(searchQuery) || 
-                            s.ru_id.includes(searchQuery);
-      const matchesSem = semesterFilter === 'All' || s.semester.toString() === semesterFilter;
-      return matchesSearch && matchesSem;
-    });
-  }, [students, searchQuery, semesterFilter]);
+  const handleAttendanceFines = async () => {
+    const targets = filteredStudents.filter((s) => (s.attendance_percentage || 0) < MIN_ATTENDANCE_PERCENT);
+    if (targets.length === 0) return alert(`No students in the current view have attendance below ${MIN_ATTENDANCE_PERCENT}%.`);
+    if (!window.confirm(`Apply ${ATTENDANCE_FINE} Tk fine to ${targets.length} students with low attendance?\n\nStudents already fined this semester are skipped automatically.`)) return;
 
-  const metrics = useMemo(() => {
-    let totalMonthly = 0;
-    let totalSemExam = 0;
-    let totalFinesDue = 0;
-    let totalFinesCollected = 0;
-    let clearedCount = 0;
-    
-    filteredStudents.forEach(s => {
-      totalMonthly += s.monthly_due;
-      totalSemExam += (s.sem_due + s.exam_due);
-      totalFinesDue += s.fine_due;
-      totalFinesCollected += s.fines_collected;
-      if (s.monthly_due === 0 && s.sem_due === 0 && s.exam_due === 0 && s.fine_due === 0) clearedCount++;
+    setLoading(true);
+    const { data, error } = await supabase.rpc('apply_attendance_fines', {
+      p_student_ids: targets.map((s) => s.id),
+      p_amount: ATTENDANCE_FINE,
+      p_threshold: MIN_ATTENDANCE_PERCENT,
     });
 
-    return {
-      totalStudents: filteredStudents.length,
-      cleared: clearedCount,
-      pending: filteredStudents.length - clearedCount,
-      monthly: totalMonthly,
-      semExam: totalSemExam,
-      finesCollected: totalFinesCollected,
-      grandTotalDue: totalMonthly + totalSemExam + totalFinesDue
-    };
-  }, [filteredStudents]);
-
-  // --- MODAL HANDLERS ---
-  const openModal = (type: 'payment' | 'rates', student: any = null) => {
-    // Reset all 4 payment boxes
-    setPaymentAmounts({ monthly: '', sem: '', exam: '', fine: '' }); 
-    setPaymentNote('');
-    setAdjustment({ category: 'monthly', amount: '', reason: '' });
-    
-    // Pre-fill the base rates if opening the Edit Dues modal
-    if (type === 'rates' && student) {
-      setEditRates({
-        monthly: student.base_monthly,
-        sem: student.base_sem,
-        exam: student.base_exam
-      });
-    }
-
-    setModalConfig({ isOpen: true, type, student });
+    if (error) alert(`Error applying fines: ${error.message}`);
+    else alert(`Fined ${data.fined} student(s).\n${data.already_fined} already fined this semester (skipped).`);
+    fetchStudents();
   };
 
-  const closeModal = () => {
-    setModalConfig({ isOpen: false, type: null, student: null });
-    setHistory(null);
-  };
+  const kpis = [
+    { label: 'Monthly Dues', value: metrics.monthly },
+    { label: 'Sem & Exam Dues', value: metrics.semExam },
+  ];
 
   return (
     <div className="min-h-screen bg-[#f4f7f9] p-6 lg:p-10 font-sans text-slate-800">
-      
-      {/* HEADER */}
-      <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center space-x-5">
-          <div className="flex -space-x-3">
-            <div className="w-14 h-14 rounded-full bg-white shadow-sm border-2 border-slate-200 flex items-center justify-center z-10 overflow-hidden">
-              <span className="text-xs font-bold text-slate-400 text-center leading-tight">ICE<br/>Logo</span>
-            </div>
-            <div className="w-14 h-14 rounded-full bg-emerald-50 shadow-sm border-2 border-emerald-200 flex items-center justify-center z-0 overflow-hidden">
-              <span className="text-[10px] font-bold text-emerald-500 text-center leading-tight">Dept<br/>Logo</span>
-            </div>
-          </div>
-          <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Student Affairs & Finance</h1>
-            <p className="text-sm font-medium text-slate-500 mt-1">
-              {teacherName} | Department of CSE
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-3">
-          <button 
-            onClick={() => setIsPasswordModalOpen(true)} 
-            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold shadow-sm transition-colors"
-          >
-            Change Password
-          </button>
-          <button 
-            onClick={handleLogout} 
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold shadow-sm transition-colors"
-          >
-            Logout
-          </button>
-        </div>
-      </header>
+      <PortalHeader title="Student Affairs & Finance" accent="emerald" />
 
-      {/* KPI Cards */}
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Filtered Students</p>
@@ -359,73 +122,50 @@ export default function StudentAffairsPage() {
             <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded">{metrics.pending} Pending</span>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly Dues</p>
-          <p className="text-2xl font-bold text-slate-800">৳{metrics.monthly.toLocaleString()}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Sem & Exam Dues</p>
-          <p className="text-2xl font-bold text-slate-800">৳{metrics.semExam.toLocaleString()}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-5 bg-gradient-to-br from-white to-emerald-50/50">
+        {kpis.map(({ label, value }) => (
+          <div key={label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
+            <p className="text-2xl font-bold text-slate-800">৳{value.toLocaleString()}</p>
+          </div>
+        ))}
+        <div className="rounded-xl shadow-sm border border-emerald-200 p-5 bg-gradient-to-br from-white to-emerald-50/50">
           <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Lifetime Fines Collected</p>
           <p className="text-2xl font-bold text-emerald-600">৳{metrics.finesCollected.toLocaleString()}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-rose-200 p-5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-16 h-16 bg-rose-50 rounded-bl-full -z-10"></div>
+        <div className="bg-white rounded-xl shadow-sm border border-rose-200 p-5">
           <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-1">Grand Total Uncollected</p>
           <p className="text-3xl font-black text-rose-600">৳{metrics.grandTotalDue.toLocaleString()}</p>
         </div>
       </div>
 
-      {/* Main Ledger */}
+      {/* LEDGER */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-600 mr-2">1-Click Mass Billing:</span>
-            
-            <button 
-              onClick={() => handleExecuteMassBill('Monthly')} 
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
-            >
-              + Monthly (x6)
-            </button>
-            <button 
-              onClick={() => handleExecuteMassBill('Semester')} 
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
-            >
-              + Semester (x1)
-            </button>
-            <button 
-              onClick={() => handleExecuteMassBill('RU Exam')} 
-              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
-            >
-              + RU Exam (x1)
-            </button>
-            
-            <button 
-              onClick={handleApplyAttendanceFines} 
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded shadow-sm transition-colors ml-4 flex items-center"
-            >
-              ⚠️ Auto-Fine (&lt;60% Att.)
+            <button onClick={() => handleMassBill('Monthly')} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow-sm transition-colors">+ Monthly (x6)</button>
+            <button onClick={() => handleMassBill('Semester')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-sm transition-colors">+ Semester (x1)</button>
+            <button onClick={() => handleMassBill('RU Exam')} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded shadow-sm transition-colors">+ RU Exam (x1)</button>
+            <button onClick={handleAttendanceFines} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded shadow-sm transition-colors ml-4">
+              ⚠️ Auto-Fine (&lt;{MIN_ATTENDANCE_PERCENT}% Att.)
             </button>
           </div>
 
           <div className="flex items-center space-x-3 w-full xl:w-auto">
-            <input 
-              type="text" 
-              placeholder="Search Name or ID..." 
+            <input
+              type="text"
+              placeholder="Search Name or ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full xl:w-64 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
-            <select 
+            <select
               value={semesterFilter}
               onChange={(e) => setSemesterFilter(e.target.value)}
               className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="All">All Semesters</option>
-              {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Semester {n}</option>)}
+              {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
             </select>
           </div>
         </div>
@@ -434,340 +174,19 @@ export default function StudentAffairsPage() {
           {loading ? (
             <div className="p-10 text-center text-slate-500 font-medium">Fetching real-time ledger...</div>
           ) : (
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-white border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 font-bold text-slate-500">College ID</th>
-                  <th className="px-6 py-4 font-bold text-slate-500">RU ID</th>
-                  <th className="px-6 py-4 font-bold text-slate-500">Name</th>
-                  <th className="px-6 py-4 font-bold text-slate-500 text-center">Att. %</th>
-                  <th className="px-6 py-4 font-bold text-slate-500">Monthly</th>
-                  <th className="px-6 py-4 font-bold text-slate-500">Sem.</th>
-                  <th className="px-6 py-4 font-bold text-slate-500">Exam</th>
-                  <th className="px-6 py-4 font-bold text-rose-500 bg-rose-50/30">Fine Due</th>
-                  <th className="px-6 py-4 font-black text-slate-800 bg-slate-50">Total Due</th>
-                  <th className="px-6 py-4 font-bold text-slate-500 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((s) => {
-                  const totalDue = s.monthly_due + s.sem_due + s.exam_due + s.fine_due;
-                  const isCleared = totalDue === 0;
-
-                  return (
-                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-slate-900">{s.college_id}</td>
-                      <td className="px-6 py-4 text-slate-500">{s.ru_id}</td>
-                      <td className="px-6 py-4 font-medium text-slate-800">{s.name}</td>
-                      
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${s.attendance_percentage < 60 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {s.attendance_percentage}%
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className={`font-bold ${s.monthly_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.monthly_due > 0 ? s.monthly_due : '-'}</div>
-                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">Rate: {s.base_monthly}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className={`font-bold ${s.sem_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.sem_due > 0 ? s.sem_due : '-'}</div>
-                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">Rate: {s.base_sem}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className={`font-bold ${s.exam_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{s.exam_due > 0 ? s.exam_due : '-'}</div>
-                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">Rate: {s.base_exam}</div>
-                      </td>
-                      <td className={`px-6 py-4 font-bold bg-rose-50/30 ${s.fine_due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                        {s.fine_due > 0 ? s.fine_due : '-'}
-                      </td>
-                      
-                      <td className="px-6 py-4 font-black bg-slate-50 text-slate-800">
-                        {isCleared ? <span className="text-emerald-600 flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span>Cleared</span> : <span>৳{totalDue}</span>}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center space-x-2">
-                          <button 
-                            onClick={() => openModal('payment', s)} 
-                            className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded text-xs font-bold transition-colors"
-                          >
-                            Payment
-                          </button>
-                          <button 
-                            onClick={() => openHistory(s)} 
-                            className="px-3 py-1 bg-white text-slate-600 border border-slate-300 hover:bg-slate-100 rounded text-xs font-bold transition-colors"
-                          >
-                            History
-                          </button>
-                          <button 
-                            onClick={() => openModal('rates', s)} 
-                            className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 rounded text-xs font-bold transition-colors"
-                          >
-                            Edit Dues
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-          {!loading && filteredStudents.length === 0 && (
-            <div className="p-8 text-center text-slate-500">No students found matching your criteria.</div>
+            <LedgerTable
+              students={filteredStudents}
+              onPayment={(student) => setModal({ type: 'payment', student })}
+              onHistory={(student) => setModal({ type: 'history', student })}
+              onDues={(student) => setModal({ type: 'dues', student })}
+            />
           )}
         </div>
       </div>
 
-      {/* MODAL SYSTEM */}
-      {modalConfig.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={`bg-white rounded-2xl shadow-2xl w-full ${modalConfig.type === 'history' ? 'max-w-3xl' : 'max-w-md'} overflow-hidden animate-in fade-in zoom-in duration-200`}>
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 text-lg">
-                {modalConfig.type === 'payment' ? 'Receive Payments' : modalConfig.type === 'history' ? `Payment History — ${modalConfig.student?.name}` : 'Set Contract Dues'}
-              </h3>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-700 font-bold text-xl">×</button>
-            </div>
-
-            <div className="p-6">
-              
-              {/* PAYMENT CONTEXT - NOW 4 GRIDS */}
-              {modalConfig.type === 'payment' && (
-                <div className="space-y-4">
-                  <div className="bg-blue-50 p-3 rounded-lg text-sm mb-4 border border-blue-100">
-                    Recording payment for <span className="font-bold text-blue-900">{modalConfig.student?.name}</span>. <br/>
-                    Current total due: <span className="font-bold text-rose-600">৳{modalConfig.student?.monthly_due + modalConfig.student?.sem_due + modalConfig.student?.exam_due + modalConfig.student?.fine_due}</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Monthly (Due: ৳{modalConfig.student?.monthly_due})</label>
-                      <input 
-                        type="number" 
-                        value={paymentAmounts.monthly} 
-                        onChange={(e) => setPaymentAmounts({...paymentAmounts, monthly: e.target.value ? Number(e.target.value) : ''})} 
-                        className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
-                        placeholder="0" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Semester (Due: ৳{modalConfig.student?.sem_due})</label>
-                      <input 
-                        type="number" 
-                        value={paymentAmounts.sem} 
-                        onChange={(e) => setPaymentAmounts({...paymentAmounts, sem: e.target.value ? Number(e.target.value) : ''})} 
-                        className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
-                        placeholder="0" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">RU Exam (Due: ৳{modalConfig.student?.exam_due})</label>
-                      <input 
-                        type="number" 
-                        value={paymentAmounts.exam} 
-                        onChange={(e) => setPaymentAmounts({...paymentAmounts, exam: e.target.value ? Number(e.target.value) : ''})} 
-                        className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
-                        placeholder="0" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-rose-600 mb-1">Fine (Due: ৳{modalConfig.student?.fine_due})</label>
-                      <input 
-                        type="number" 
-                        value={paymentAmounts.fine} 
-                        onChange={(e) => setPaymentAmounts({...paymentAmounts, fine: e.target.value ? Number(e.target.value) : ''})} 
-                        className="w-full border-rose-300 bg-rose-50 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-rose-500" 
-                        placeholder="0" 
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Note (optional)</label>
-                    <input 
-                      type="text" 
-                      value={paymentNote} 
-                      onChange={(e) => setPaymentNote(e.target.value)} 
-                      className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" 
-                      placeholder="e.g. Cash, bKash TrxID…" 
-                    />
-                  </div>
-
-                  <button 
-                    onClick={handleReceivePayment} 
-                    disabled={isSaving}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors disabled:opacity-50"
-                  >
-                    {isSaving ? 'Saving...' : 'Confirm & Save Receipts'}
-                  </button>
-                </div>
-              )}
-
-              {/* RATES/DUES CONTEXT */}
-              {modalConfig.type === 'rates' && (
-                <div className="space-y-4">
-                  <div className="text-sm text-slate-600 mb-4">
-                    Set permanent contract rates for <span className="font-bold">{modalConfig.student?.name}</span>. Mass billing will use these rates.
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Monthly Contract Rate (1 Month)</label>
-                    <input 
-                      type="number" 
-                      value={editRates.monthly} 
-                      onChange={(e) => setEditRates({...editRates, monthly: Number(e.target.value)})} 
-                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">Semester Contract Rate</label>
-                    <input 
-                      type="number" 
-                      value={editRates.sem} 
-                      onChange={(e) => setEditRates({...editRates, sem: Number(e.target.value)})} 
-                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">RU Exam Contract Rate</label>
-                    <input 
-                      type="number" 
-                      value={editRates.exam} 
-                      onChange={(e) => setEditRates({...editRates, exam: Number(e.target.value)})} 
-                      className="w-full border-slate-300 border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-emerald-500" 
-                    />
-                  </div>
-                  <button 
-                    onClick={handleUpdateRates} 
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors"
-                  >
-                    Save Contract Dues
-                  </button>
-
-                  <div className="border-t border-slate-200 pt-4 mt-6 space-y-3">
-                    <p className="text-sm font-bold text-slate-800">Correct a Balance</p>
-                    <p className="text-xs text-slate-500">For waivers or fixing mistakes. Use a negative amount to reduce what is owed. Every correction is kept in the history with its reason.</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <select 
-                        value={adjustment.category} 
-                        onChange={(e) => setAdjustment({...adjustment, category: e.target.value})} 
-                        className="border-slate-300 border rounded-lg p-2 bg-white outline-none focus:ring-2 focus:ring-slate-500"
-                      >
-                        <option value="monthly">Monthly (owes ৳{modalConfig.student?.monthly_due})</option>
-                        <option value="semester">Semester (owes ৳{modalConfig.student?.sem_due})</option>
-                        <option value="ru_exam">RU Exam (owes ৳{modalConfig.student?.exam_due})</option>
-                        <option value="fine">Fine (owes ৳{modalConfig.student?.fine_due})</option>
-                      </select>
-                      <input 
-                        type="number" 
-                        value={adjustment.amount} 
-                        onChange={(e) => setAdjustment({...adjustment, amount: e.target.value ? Number(e.target.value) : ''})} 
-                        className="border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-slate-500" 
-                        placeholder="e.g. -1000" 
-                      />
-                    </div>
-                    <input 
-                      type="text" 
-                      value={adjustment.reason} 
-                      onChange={(e) => setAdjustment({...adjustment, reason: e.target.value})} 
-                      className="w-full border-slate-300 border rounded-lg p-2 outline-none focus:ring-2 focus:ring-slate-500" 
-                      placeholder="Reason (required) — e.g. Merit scholarship waiver" 
-                    />
-                    <button 
-                      onClick={handleAdjustBalance} 
-                      disabled={isSaving}
-                      className="w-full bg-white border border-slate-400 hover:bg-slate-50 text-slate-800 font-bold py-2.5 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {isSaving ? 'Saving...' : 'Record Correction'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* HISTORY CONTEXT */}
-              {modalConfig.type === 'history' && (
-                <div className="max-h-[60vh] overflow-y-auto">
-                  {history === null ? (
-                    <p className="text-center text-slate-500 py-8">Loading history...</p>
-                  ) : history.length === 0 ? (
-                    <p className="text-center text-slate-500 py-8">No transactions yet.</p>
-                  ) : (
-                    <table className="w-full text-left text-sm">
-                      <thead className="text-xs text-slate-500 uppercase border-b border-slate-200">
-                        <tr>
-                          <th className="py-2 pr-3">Date</th>
-                          <th className="py-2 pr-3">Type</th>
-                          <th className="py-2 pr-3 text-right">Amount</th>
-                          <th className="py-2 pr-3">Details</th>
-                          <th className="py-2">By</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {history.map((t) => {
-                          const label = { monthly: 'Monthly', semester: 'Semester', ru_exam: 'RU Exam', fine: 'Fine' }[t.category as string];
-                          const isPayment = t.kind === 'payment';
-                          const reducesDue = isPayment || Number(t.amount) < 0;
-                          const kindLabel = t.is_opening ? 'Opening balance' : t.kind === 'charge' ? 'Charge' : isPayment ? 'Payment' : 'Correction';
-                          return (
-                            <tr key={t.id}>
-                              <td className="py-2 pr-3 whitespace-nowrap text-slate-600">{new Date(t.created_at).toLocaleDateString()}</td>
-                              <td className="py-2 pr-3 whitespace-nowrap">
-                                <span className="font-bold text-slate-800">{label}</span>
-                                <span className="text-slate-500"> · {kindLabel}</span>
-                              </td>
-                              <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${reducesDue ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {reducesDue ? '−' : '+'}৳{Math.abs(Number(t.amount)).toLocaleString()}
-                              </td>
-                              <td className="py-2 pr-3 text-slate-600">
-                                {t.note}
-                                {t.receipt_id && <span className="text-xs text-slate-400"> (Receipt {String(t.receipt_id).slice(0, 8).toUpperCase()})</span>}
-                              </td>
-                              <td className="py-2 text-slate-500 whitespace-nowrap">{t.created_by_name || '—'}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PASSWORD CHANGE MODAL */}
-      {isPasswordModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 text-lg">Change Password</h3>
-              <button onClick={() => setIsPasswordModalOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold text-xl">×</button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-xs text-slate-500 mb-4">Update the login password for your faculty account. This will take effect immediately.</p>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">New Password</label>
-                <input 
-                  type="password" 
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
-                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-800"
-                />
-              </div>
-              <button 
-                onClick={handleUpdatePassword} 
-                disabled={isUpdatingPassword}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-lg mt-4 transition-colors disabled:opacity-50"
-              >
-                {isUpdatingPassword ? 'Updating...' : 'Confirm Password Change'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {modal?.type === 'payment' && <PaymentModal student={modal.student} onClose={() => setModal(null)} onSaved={afterSave} />}
+      {modal?.type === 'dues' && <DuesModal student={modal.student} onClose={() => setModal(null)} onSaved={afterSave} />}
+      {modal?.type === 'history' && <HistoryModal student={modal.student} onClose={() => setModal(null)} />}
     </div>
   );
 }

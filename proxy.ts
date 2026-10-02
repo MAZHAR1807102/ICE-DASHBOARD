@@ -41,6 +41,8 @@ export async function proxy(request: NextRequest) {
 
   if (pathname.startsWith('/dashboard')) {
     if (!role || !FACULTY_ROLES.includes(role)) return redirectTo('/login');
+    // /dashboard itself is the HOD overview; everyone else goes to their own workspace.
+    if (pathname === '/dashboard' && role !== 'hod') return redirectTo(ROLE_HOME[role]);
     const allowed = allowedRolesFor(pathname);
     if (allowed && !allowed.includes(role)) return redirectTo(ROLE_HOME[role]);
   }

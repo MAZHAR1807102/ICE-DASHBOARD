@@ -1,211 +1,154 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabase';
-import { getSessionUser, signOut } from '../../utils/session';
+import { MIN_ATTENDANCE_PERCENT } from '../../utils/eligibility';
+import { totalDue, type Student } from '../../utils/types';
+import PortalHeader from '../components/PortalHeader';
 
-export default function DashboardRoot() {
-  const router = useRouter();
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [userName, setUserName] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+// Only the HOD reaches this page — proxy.ts sends every other role to its own workspace.
 
-  // HOD Aggregated Metrics
-  const [metrics, setMetrics] = useState({
-    totalStudents: 0,
-    totalRevenuePending: 0,
-    avgAttendance: 0,
-    studentsAtRisk: 0,
-    activeCourses: 0,
-  });
+const SEVERE_DEBT = 15000;
+const FAILING_BACKLOGS = 3;
+
+type Escalation = { student: Student; reason: string; href: string };
+
+function escalationFor(s: Student): Escalation | null {
+  const due = totalDue(s);
+  if (s.exam_reg_status === 'Blocked') return { student: s, reason: 'Exam registration blocked', href: '/dashboard/exam' };
+  if (due > SEVERE_DEBT) return { student: s, reason: `Severe debt (৳${due.toLocaleString()})`, href: '/dashboard/studAff' };
+  if ((s.backlogs || 0) >= FAILING_BACKLOGS) return { student: s, reason: `Academic failure (${s.backlogs} backlogs)`, href: '/dashboard/academic' };
+  return null;
+}
+
+const PORTALS = [
+  { title: 'Finance & Student Affairs', manager: 'Teacher 1', href: '/dashboard/studAff', color: 'emerald', items: ['Fee Structure Configuration', 'Batch-wide Mass Billing', 'Payment History & Receipts'] },
+  { title: 'Academic Coordination', manager: 'Teacher 3', href: '/dashboard/academic', color: 'indigo', items: ['Curriculum Catalog', 'Bulk Attendance Processing', 'CT Mark Automations'] },
+  { title: 'Exam Control & Results', manager: 'Teacher 2', href: '/dashboard/exam', color: 'purple', items: ['Eligibility Checks', 'Form Fill-up Management', 'Exam Registration Status'] },
+  { title: 'Student Advisory', manager: 'Batch Advisors', href: '/dashboard/advisor', color: 'blue', items: ['Track Individual Progress', 'Course Registration Approval', 'Mentoring Notes & Alerts'] },
+] as const;
+
+const PORTAL_STYLE = {
+  emerald: { header: 'bg-emerald-50/30', dot: 'bg-emerald-500', button: 'bg-emerald-600 hover:bg-emerald-700' },
+  indigo: { header: 'bg-indigo-50/30', dot: 'bg-indigo-500', button: 'bg-indigo-600 hover:bg-indigo-700' },
+  purple: { header: 'bg-purple-50/30', dot: 'bg-purple-500', button: 'bg-purple-600 hover:bg-purple-700' },
+  blue: { header: 'bg-blue-50/30', dot: 'bg-blue-500', button: 'bg-blue-600 hover:bg-blue-700' },
+};
+
+export default function HodDashboard() {
+  const [students, setStudents] = useState<Student[] | null>(null);
+  const [courseCount, setCourseCount] = useState(0);
 
   useEffect(() => {
-    getSessionUser().then((user) => {
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
-
-      setUserRole(user.role ?? null);
-      setUserName(user.name);
-
-      // Auto-Redirect Faculty to their specific workspaces
-      if (user.role === 'finance') {
-        router.replace('/dashboard/studAff');
-      } else if (user.role === 'academic') {
-        router.replace('/dashboard/academic');
-      } else if (user.role === 'exam') {
-        router.replace('/dashboard/exam');
-      } else if (user.role === 'advisor') {
-        router.replace('/dashboard/advisor');
-      } else if (user.role === 'hod') {
-        fetchHODMetrics();
-      }
+    Promise.all([
+      supabase.from('master_students').select('*'),
+      supabase.from('courses').select('id', { count: 'exact', head: true }),
+    ]).then(([studentRes, courseRes]) => {
+      setStudents((studentRes.data as Student[]) ?? []);
+      setCourseCount(courseRes.count ?? 0);
     });
-  }, [router]);
+  }, []);
 
-  const fetchHODMetrics = async () => {
-    setIsLoading(true);
-    
-    // Fetch system-wide data for the HOD overview
-    const { data: students } = await supabase.from('master_students').select('*');
-    const { data: courses } = await supabase.from('courses').select('id');
-
-    if (students) {
-      let pendingRevenue = 0;
-      let totalAtt = 0;
-      let atRisk = 0;
-
-      students.forEach(s => {
-        pendingRevenue += (s.monthly_due || 0) + (s.semester_due || 0) + (s.exam_due || 0) + (s.attendance_fine || 0);
-        totalAtt += (s.attendance_percentage || 0);
-        if ((s.attendance_percentage || 0) < 60) atRisk++;
-      });
-
-      setMetrics({
-        totalStudents: students.length,
-        totalRevenuePending: pendingRevenue,
-        avgAttendance: students.length > 0 ? Math.round(totalAtt / students.length) : 0,
-        studentsAtRisk: atRisk,
-        activeCourses: courses ? courses.length : 0
-      });
-    }
-    
-    setIsLoading(false);
-  };
-
-  // Prevent UI flash while routing standard faculty members
-  if (isLoading || userRole === 'finance' || userRole === 'academic' || userRole === 'exam' || userRole === 'advisor') {
+  if (!students) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
         <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mb-4"></div>
-        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Initializing Environment</p>
+        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Loading department data</p>
       </div>
     );
   }
 
-  // --- HOD COMMAND CENTER UI ---
+  const attendance = (s: Student) => s.attendance_percentage || 0;
+  const outstanding = students.reduce((sum, s) => sum + totalDue(s), 0);
+  const avgAttendance = students.length ? Math.round(students.reduce((sum, s) => sum + attendance(s), 0) / students.length) : 0;
+  const atRisk = students.filter((s) => attendance(s) < MIN_ATTENDANCE_PERCENT).length;
+  const escalations = students.map(escalationFor).filter((e): e is Escalation => e !== null);
+
+  const metrics = [
+    { label: 'Total Enrollment', value: students.length.toString(), style: 'text-slate-900' },
+    { label: 'Total Outstanding Dues', value: `৳${outstanding.toLocaleString()}`, style: 'text-rose-600' },
+    { label: 'Average Attendance', value: `${avgAttendance}%`, style: 'text-slate-900' },
+    { label: `Students At Risk (<${MIN_ATTENDANCE_PERCENT}%)`, value: atRisk.toString(), style: 'text-rose-700' },
+  ];
+
   return (
     <div className="min-h-screen bg-[#f8fafc] p-6 lg:p-10 font-sans text-slate-800">
-      
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Department Overview</h1>
-          <p className="text-sm font-semibold text-slate-500 mt-1 uppercase tracking-wider">
-            {userName} | Head of Department
-          </p>
-        </div>
-        
-        <button 
-          onClick={() => signOut('/login')}
-          className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
-        >
-          End Session
-        </button>
-      </header>
+      <PortalHeader title="Department Overview" subtitle="Head of Department" />
 
-      {/* --- EXECUTIVE SUMMARY METRICS --- */}
       <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Executive Summary</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Enrollment</p>
-          <p className="text-3xl font-black text-slate-900">{metrics.totalStudents}</p>
-        </div>
-        
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Outstanding Dues</p>
-          <p className="text-3xl font-black text-rose-600">৳{metrics.totalRevenuePending.toLocaleString()}</p>
-        </div>
+        {metrics.map((m) => (
+          <div key={m.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <p className="text-xs font-bold text-slate-500 uppercase mb-1">{m.label}</p>
+            <p className={`text-3xl font-black ${m.style}`}>{m.value}</p>
+          </div>
+        ))}
+      </div>
 
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Average Attendance</p>
-          <p className="text-3xl font-black text-slate-900">{metrics.avgAttendance}%</p>
+      <div className="bg-white rounded-xl border border-rose-100 shadow-sm p-6 mb-10">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-black text-rose-700">Escalations Needing Attention</h2>
+          <span className="bg-rose-100 text-rose-800 text-xs px-2 py-1 rounded font-bold">{escalations.length} students</span>
         </div>
-
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm bg-gradient-to-br from-white to-rose-50">
-          <p className="text-xs font-bold text-rose-600 uppercase mb-1">Students At Risk (&lt;60%)</p>
-          <p className="text-3xl font-black text-rose-700">{metrics.studentsAtRisk}</p>
+        <p className="text-xs text-slate-500 mb-4">
+          Students whose exam registration is blocked, who owe more than ৳{SEVERE_DEBT.toLocaleString()}, or who have {FAILING_BACKLOGS}+ backlogs.
+        </p>
+        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-slate-50">
+              <tr className="border-b border-slate-200">
+                <th className="p-3 font-bold text-slate-500">College ID</th>
+                <th className="p-3 font-bold text-slate-500">Name</th>
+                <th className="p-3 font-bold text-slate-500">Advisor</th>
+                <th className="p-3 font-bold text-slate-500">Reason</th>
+                <th className="p-3 font-bold text-slate-500">Handled In</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {escalations.map(({ student, reason, href }) => (
+                <tr key={student.id} className="hover:bg-slate-50">
+                  <td className="p-3 text-slate-900">{student.college_id}</td>
+                  <td className="p-3 font-medium text-slate-900">{student.name}</td>
+                  <td className="p-3 text-slate-600">{student.advisor || '—'}</td>
+                  <td className="p-3 text-rose-600 font-medium">{reason}</td>
+                  <td className="p-3"><Link href={href} className="text-indigo-600 font-bold hover:underline">Open portal →</Link></td>
+                </tr>
+              ))}
+              {escalations.length === 0 && (
+                <tr><td colSpan={5} className="p-6 text-center text-emerald-600 font-medium">No escalations at this time.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* --- SYSTEM MODULES --- */}
       <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Department Portals</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* FINANCE PORTAL */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100 bg-emerald-50/30">
-            <h3 className="text-lg font-black text-slate-900">Finance & Student Affairs</h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Teacher 1</p>
-          </div>
-          <div className="p-6 flex-grow flex flex-col justify-between">
-            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span> Fee Structure Configuration</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span> Batch-wide Mass Billing</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span> Individual Payment Receipts</li>
-            </ul>
-            <Link href="/dashboard/studAff" className="block w-full text-center py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors">
-              Access Finance Portal
-            </Link>
-          </div>
-        </div>
-
-        {/* ACADEMIC PORTAL */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100 bg-indigo-50/30">
-            <h3 className="text-lg font-black text-slate-900">Academic Coordination</h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Teacher 3</p>
-          </div>
-          <div className="p-6 flex-grow flex flex-col justify-between">
-            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-2"></span> Curriculum Catalog ({metrics.activeCourses} Active)</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-2"></span> Bulk Attendance Processing</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-2"></span> CT Mark Automations</li>
-            </ul>
-            <Link href="/dashboard/academic" className="block w-full text-center py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors">
-              Access Academic Portal
-            </Link>
-          </div>
-        </div>
-
-        {/* EXAM CONTROL PORTAL */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100 bg-purple-50/30">
-            <h3 className="text-lg font-black text-slate-900">Exam Control & Results</h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Teacher 2</p>
-          </div>
-          <div className="p-6 flex-grow flex flex-col justify-between">
-            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Tabulate Final Grades</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Form Fill-up Management</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-2"></span> Generate Admit Cards & Transcripts</li>
-            </ul>
-            <Link href="/dashboard/exam" className="block w-full text-center py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors">
-              Access Exam Portal
-            </Link>
-          </div>
-        </div>
-
-        {/* ADVISORS PORTAL */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100 bg-blue-50/30">
-            <h3 className="text-lg font-black text-slate-900">Student Advisory</h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">Managed by Batch Advisors</p>
-          </div>
-          <div className="p-6 flex-grow flex flex-col justify-between">
-            <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Track Individual Progress</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Course Registration Approval</li>
-              <li className="flex items-center"><span className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span> Mentoring Notes & Alerts</li>
-            </ul>
-            <Link href="/dashboard/advisor" className="block w-full text-center py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors">
-              Access Advisory Portal
-            </Link>
-          </div>
-        </div>
-
+        {PORTALS.map((portal) => {
+          const style = PORTAL_STYLE[portal.color];
+          return (
+            <div key={portal.href} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+              <div className={`p-6 border-b border-slate-100 ${style.header}`}>
+                <h3 className="text-lg font-black text-slate-900">{portal.title}</h3>
+                <p className="text-sm text-slate-500 font-medium mt-1">Managed by {portal.manager}</p>
+              </div>
+              <div className="p-6 flex-grow flex flex-col justify-between">
+                <ul className="space-y-3 text-sm font-medium text-slate-600 mb-6">
+                  {portal.items.map((item) => (
+                    <li key={item} className="flex items-center"><span className={`w-1.5 h-1.5 rounded-full mr-2 ${style.dot}`}></span>{item}</li>
+                  ))}
+                  {portal.href === '/dashboard/academic' && (
+                    <li className="flex items-center"><span className={`w-1.5 h-1.5 rounded-full mr-2 ${style.dot}`}></span>{courseCount} Active Courses</li>
+                  )}
+                </ul>
+                <Link href={portal.href} className={`block w-full text-center py-2.5 text-white font-bold rounded-lg transition-colors ${style.button}`}>
+                  Open {portal.title}
+                </Link>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
