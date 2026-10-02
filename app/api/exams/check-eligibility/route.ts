@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '../../../../utils/supabase-server';
+import { isExamEligible } from '../../../../utils/eligibility';
 
 export async function POST(request: Request) {
   const auth = await requireRole(['exam', 'hod']);
@@ -10,9 +11,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const targetSemester = body.semester;
 
-    // 1. Fetch the students and their attendance
+    // 1. Fetch the students with their attendance and balances
     let query = supabase.from('master_students')
-      .select('id, college_id, attendance_percentage, exam_reg_status');
+      .select('id, attendance_percentage, exam_reg_status, eligibility_override, monthly_due, semester_due, exam_due, attendance_fine');
 
     if (targetSemester && targetSemester !== 'All') {
       query = query.eq('semester', parseInt(targetSemester));
@@ -24,32 +25,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'No students found.' }, { status: 404 });
     }
 
-    // 2. Fetch the live financial ledger view to check for dues
-    const { data: feeLedger, error: feeError } = await supabase
-      .from('student_fee_summary')
-      .select('college_id, total_outstanding_due');
-    if (feeError) throw feeError;
+    // 2. Apply the department rule (see utils/eligibility.ts)
+    const toBlock = students
+      .filter(s => s.exam_reg_status !== 'Blocked')
+      .filter(s => !isExamEligible({
+        attendance_percentage: s.attendance_percentage,
+        eligibility_override: s.eligibility_override,
+        total_due: (s.monthly_due || 0) + (s.semester_due || 0) + (s.exam_due || 0) + (s.attendance_fine || 0),
+      }))
+      .map(s => s.id);
 
-    let blockedCount = 0;
-
-    // 3. The Autonomous Logic Engine
-    for (const student of students) {
-      const studentFinances = feeLedger?.find(f => f.college_id === student.college_id);
-      
-      const hasDues = studentFinances && Number(studentFinances.total_outstanding_due) > 0;
-      const lowAttendance = student.attendance_percentage < 75; // Department threshold
-
-      // If they owe money OR have low attendance, block them
-      if (hasDues || lowAttendance) {
-        if (student.exam_reg_status !== 'Blocked') {
-          await supabase
-            .from('master_students')
-            .update({ exam_reg_status: 'Blocked' })
-            .eq('id', student.id);
-          blockedCount++;
-        }
-      }
+    // 3. Block them in a single update
+    if (toBlock.length > 0) {
+      const { error: updateError } = await supabase
+        .from('master_students')
+        .update({ exam_reg_status: 'Blocked' })
+        .in('id', toBlock);
+      if (updateError) throw updateError;
     }
+    const blockedCount = toBlock.length;
 
     return NextResponse.json({ 
       success: true, 

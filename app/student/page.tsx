@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../utils/supabase';
 import { changePassword, getSessionUser, signOut } from '../../utils/session';
+import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../utils/eligibility';
 
 type CourseMark = {
   course_code: string;
@@ -93,9 +94,9 @@ export default function StudentPortal() {
 
   // --- AUTOMATED ELIGIBILITY LOGIC ---
   const totalDues = (studentData.monthly_due || 0) + (studentData.semester_due || 0) + (studentData.exam_due || 0) + (studentData.attendance_fine || 0);
-  const hasGoodAttendance = studentData.attendance_percentage >= 60;
+  const hasGoodAttendance = studentData.attendance_percentage >= MIN_ATTENDANCE_PERCENT;
   const isFinanciallyCleared = totalDues === 0;
-  const isEligible = studentData.eligibility_override || (hasGoodAttendance && isFinanciallyCleared);
+  const isEligible = isExamEligible({ ...studentData, total_due: totalDues });
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans">
@@ -140,7 +141,7 @@ export default function StudentPortal() {
               <h2 className={`text-3xl font-black ${isEligible ? 'text-emerald-700' : 'text-rose-700'}`}>
                 {isEligible ? '🟢 ELIGIBLE TO REGISTER' : '🔴 REGISTRATION BLOCKED'}
               </h2>
-              {!isEligible && <p className="text-rose-600 font-medium text-sm mt-1">You must clear financial dues and maintain 60%+ attendance.</p>}
+              {!isEligible && <p className="text-rose-600 font-medium text-sm mt-1">You must clear financial dues and maintain {MIN_ATTENDANCE_PERCENT}%+ attendance.</p>}
               {studentData.eligibility_override && <p className="text-emerald-700 font-bold text-xs mt-1 bg-emerald-100 inline-block px-2 py-1 rounded">Manually Approved by Coordinator</p>}
             </div>
           </div>
@@ -150,7 +151,7 @@ export default function StudentPortal() {
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Attendance</p>
               <p className={`text-4xl font-black ${hasGoodAttendance ? 'text-emerald-600' : 'text-rose-600'}`}>{studentData.attendance_percentage}%</p>
-              <p className="text-xs font-bold text-slate-500 mt-2">Target: 60% Minimum</p>
+              <p className="text-xs font-bold text-slate-500 mt-2">Target: {MIN_ATTENDANCE_PERCENT}% Minimum</p>
             </div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Outstanding Dues</p>

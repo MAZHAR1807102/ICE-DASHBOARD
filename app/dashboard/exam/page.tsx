@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../utils/supabase';
 import { changePassword, getSessionUser, signOut } from '../../../utils/session';
+import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
 import { useRouter } from 'next/navigation';
 
 type ExamStudent = {
@@ -229,7 +230,7 @@ export default function ExaminationDashboard() {
                   <td className="p-3 text-sm font-medium text-gray-900">{student.name}</td>
                   
                   <td className="p-3 text-sm">
-                    <span className={`font-medium ${student.attendance_percentage < 75 ? 'text-red-600' : 'text-green-600'}`}>
+                    <span className={`font-medium ${student.attendance_percentage < MIN_ATTENDANCE_PERCENT ? 'text-red-600' : 'text-green-600'}`}>
                       {student.attendance_percentage}%
                     </span>
                   </td>
