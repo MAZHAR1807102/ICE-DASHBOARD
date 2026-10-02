@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
 import { AlertTriangle, BadgeCheck, CalendarRange, GraduationCap, Landmark, Search, Wallet } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
 import { SEMESTERS, totalDue, type Student } from '../../../utils/types';
-import { Button, Card, PageHeader, StatCard, inputClass, taka } from '../../components/ui';
+import { Button, Card, CohortSelect, PageHeader, StatCard, inputClass, taka } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
 import LedgerTable from './_components/LedgerTable';
 import PaymentModal from './_components/PaymentModal';
@@ -24,6 +25,7 @@ export default function StudentAffairsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('All');
+  const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
   const [modal, setModal] = useState<{ type: 'payment' | 'dues' | 'history'; student: Student } | null>(null);
 
   const fetchStudents = useCallback(() =>
@@ -41,14 +43,15 @@ export default function StudentAffairsPage() {
     fetchStudents();
   }, [fetchStudents]);
 
+  const cohorts = useMemo(() => classifyCohorts(students), [students]);
   const filteredStudents = useMemo(() => {
     const query = searchQuery.toLowerCase();
-    return students.filter((s) => {
+    return orderByCohort(students.filter((s) => {
       const matchesSearch = s.name.toLowerCase().includes(query) || s.college_id.includes(searchQuery) || (s.ru_id ?? '').includes(searchQuery);
       const matchesSem = semesterFilter === 'All' || s.semester.toString() === semesterFilter;
-      return matchesSearch && matchesSem;
-    });
-  }, [students, searchQuery, semesterFilter]);
+      return matchesSearch && matchesSem && matchesCohort(cohortFilter, cohorts.get(s.id));
+    }), cohorts);
+  }, [students, searchQuery, semesterFilter, cohortFilter, cohorts]);
 
   const metrics = useMemo(() => {
     const sum = (pick: (s: Student) => number) => filteredStudents.reduce((total, s) => total + pick(s), 0);
@@ -142,6 +145,7 @@ export default function StudentAffairsPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <input type="search" placeholder="Search name, College ID or RU ID" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`${inputClass} pl-9`} />
             </div>
+            <CohortSelect value={cohortFilter} onChange={setCohortFilter} className="sm:w-44" />
             <select value={semesterFilter} onChange={(e) => setSemesterFilter(e.target.value)} className={`${inputClass} sm:w-44`} aria-label="Semester">
               <option value="All">All semesters</option>
               {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
@@ -162,6 +166,8 @@ export default function StudentAffairsPage() {
         ) : (
           <LedgerTable
             students={filteredStudents}
+            cohorts={cohorts}
+            showSemester={semesterFilter === 'All'}
             onPayment={(student) => setModal({ type: 'payment', student })}
             onHistory={(student) => setModal({ type: 'history', student })}
             onDues={(student) => setModal({ type: 'dues', student })}
