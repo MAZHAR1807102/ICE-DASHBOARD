@@ -131,6 +131,7 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
           <thead>
             <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-slate-200">
               <th className="py-2 pr-3 font-bold hidden sm:table-cell">College ID</th>
+              <th className="py-2 pr-3 font-bold hidden sm:table-cell">RU ID</th>
               <th className="py-2 pr-3 font-bold">Name</th>
               {Array.from({ length: count }, (_, i) => <th key={i} className="py-2 px-1 font-bold text-center">CT {i + 1}<span className="block text-[10px] normal-case font-medium">/ {max}</span></th>)}
             </tr>
@@ -141,9 +142,11 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
               return (
                 <tr key={r.student_id} className={isDirty ? 'bg-amber-50/50' : ''}>
                   <td className="py-2 pr-3 font-medium text-slate-900 whitespace-nowrap hidden sm:table-cell">{r.college_id}</td>
+                  <td className="py-2 pr-3 text-slate-600 whitespace-nowrap hidden sm:table-cell">{r.ru_id || '—'}</td>
                   <td className="py-2 pr-2 sm:pr-3 text-slate-700 sm:min-w-40">
                     {r.name}
-                    <span className="block text-[11px] text-slate-400 sm:hidden">{r.college_id}</span>
+                    <span className="block text-[11px] leading-tight text-slate-400 sm:hidden">ID {r.college_id}</span>
+                    <span className="block text-[11px] leading-tight text-slate-400 sm:hidden">RU {r.ru_id || '—'}</span>
                   </td>
                   {marks[r.student_id].map((value, i) => (
                     <td key={i} className="py-1.5 px-0.5 sm:px-1 text-center">
@@ -160,7 +163,7 @@ export default function MarksSheet({ course, onSaved }: { course: TeacherCourse;
                 </tr>
               );
             })}
-            {roster.length === 0 && <tr><td colSpan={2 + count} className="py-10 text-center text-slate-500">No students are enrolled in semester {course.semester} yet.</td></tr>}
+            {roster.length === 0 && <tr><td colSpan={3 + count} className="py-10 text-center text-slate-500">No students are enrolled in semester {course.semester} yet.</td></tr>}
           </tbody>
         </table>
       </div>
