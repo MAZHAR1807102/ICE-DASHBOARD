@@ -21,18 +21,41 @@ export default function StudentModal({ student, defaultSemester, onClose, onSave
   const [form, setForm] = useState<StudentForm>(() =>
     student ? Object.fromEntries(EDITABLE.map((key) => [key, student[key]])) : { semester: defaultSemester },
   );
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Students sign in with their RU ID, so the login is created (or moved) along with the record.
+  const setLogin = async (studentId: string, newPassword?: string) => {
+    const response = await fetch('/api/students/set-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId, password: newPassword }),
+    });
+    return response.ok ? null : ((await response.json().catch(() => ({}))).error ?? 'Could not set the login.');
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    const { error } = student
-      ? await supabase.from('master_students').update(form).eq('id', student.id)
-      : await supabase.from('master_students').insert([form]);
+    const ruId = form.ru_id?.trim() || null;
+    const values = { ...form, ru_id: ruId };
+    if (student) {
+      const { error } = await supabase.from('master_students').update(values).eq('id', student.id);
+      if (error) { setIsSaving(false); return setError(error.message); }
+      const loginError = ruId && student.ru_id && ruId !== student.ru_id.trim() ? await setLogin(student.id) : null;
+      setIsSaving(false);
+      return onSaved(loginError ? `Student updated, but the login still uses the old RU ID: ${loginError}` : 'Student updated.');
+    }
+    const { data, error } = await supabase.from('master_students').insert([values]).select('id').single();
+    if (error) { setIsSaving(false); return setError(error.message); }
+    const loginError = ruId ? await setLogin(data.id, password) : null;
     setIsSaving(false);
-    if (error) return setError(error.message);
-    onSaved(student ? 'Student updated.' : 'Student added.');
+    onSaved(
+      !ruId ? 'Student added. Add their RU ID and use “Set Login” so they can sign in.'
+        : loginError ? `Student added, but the login wasn't created: ${loginError} Use “Set Login” on their row.`
+        : `Student added. They can sign in with RU ID ${ruId} and the password you set.`,
+    );
   };
 
   const field = (key: Exclude<keyof StudentForm, 'semester'>, label: string, required = false, wide = false) => (
@@ -56,6 +79,11 @@ export default function StudentModal({ student, defaultSemester, onClose, onSave
           {field('advisor', 'Advisor')}
           {field('student_contact', 'Student phone')}
           {field('guardian_contact', 'Guardian phone')}
+          {!student && (
+            <Field label="Portal password" hint={form.ru_id?.trim() ? 'They sign in with their RU ID and this password. At least 6 characters.' : 'Enter the RU ID first — students sign in with it.'} className="sm:col-span-2">
+              <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} required={!!form.ru_id?.trim()} minLength={6} disabled={!form.ru_id?.trim()} className={inputClass} autoComplete="off" />
+            </Field>
+          )}
         </div>
         <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
           <p className="mb-3 text-sm font-semibold text-slate-900">Printed on RU roll sheets</p>
