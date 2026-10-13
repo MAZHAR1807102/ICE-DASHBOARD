@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useRef, useState } from 'react';
-import { ExternalLink, KeyRound, Link2, Mail, Pencil, Save, ShieldCheck, Trash2, Upload, UsersRound } from 'lucide-react';
+import { ExternalLink, Eye, KeyRound, Link2, Mail, Pencil, Save, ShieldCheck, Trash2, Upload, UsersRound } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
 import { parseCsv } from '../../../../utils/csv';
 import { MIN_ATTENDANCE_PERCENT } from '../../../../utils/eligibility';
@@ -162,7 +162,18 @@ export default function RosterTab({ students, cohorts, showSemester, course, mar
                   {heading && <GroupHeading colSpan={5} {...heading} />}
                   <tr className={table.row}>
                     <td className={table.td}>
-                      <p className="font-medium text-slate-900">{student.name}{cohorts.get(student.id) === 'readd' && <ReaddBadge />}</p>
+                      <p className="flex flex-wrap items-center gap-x-1.5 font-medium text-slate-900">
+                        {student.name}{cohorts.get(student.id) === 'readd' && <ReaddBadge />}
+                        <a
+                          href={`/view-student/${student.id}`}
+                          target="_blank"
+                          rel="noopener"
+                          title="See this student's portal exactly as they see it"
+                          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold text-indigo-600 ring-1 ring-indigo-200 hover:bg-indigo-50"
+                        >
+                          <Eye className="size-3.5" aria-hidden /> View as student
+                        </a>
+                      </p>
                       <p className="text-xs text-slate-500">{student.college_id} · RU {student.ru_id || '—'} · Sem {student.semester}</p>
                     </td>
                     <td className={`${table.td} text-xs text-slate-500`}>
