@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { FACULTY_ROLES, ROLE_HOME, TEACHER_PORTAL_ROLES, allowedRolesFor, roleFromMetadata } from './utils/auth';
+import { DASHBOARD_ACCESS, FACULTY_ROLES, ROLE_HOME, TEACHER_PORTAL_ROLES, allowedRolesFor, roleFromMetadata } from './utils/auth';
 
 // Runs before every page: refreshes the Supabase session cookie and keeps
 // users out of areas their role doesn't cover. Data itself is guarded by RLS
@@ -54,6 +54,12 @@ export async function proxy(request: NextRequest) {
     if (allowed && !allowed.includes(role)) return redirectTo(ROLE_HOME[role]);
   }
 
+  // "View as student" — the academic office and the HOD only.
+  if (pathname.startsWith('/view-student/')) {
+    if (!role || !FACULTY_ROLES.includes(role)) return redirectTo('/login');
+    if (!(DASHBOARD_ACCESS['/dashboard/academic'] ?? []).includes(role)) return redirectTo(ROLE_HOME[role]);
+  }
+
   if (pathname.startsWith('/student') && pathname !== '/student-login') {
     if (role !== 'student') return redirectTo('/student-login');
   }
@@ -62,5 +68,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/student/:path*', '/teacher/:path*', '/login', '/student-login', '/teacher-login'],
+  matcher: ['/dashboard/:path*', '/student/:path*', '/teacher/:path*', '/view-student/:path*', '/login', '/student-login', '/teacher-login'],
 };
