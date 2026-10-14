@@ -144,5 +144,6 @@ Academic → **Promote students** after each exam: pick the semester; every stud
 any student by hand — a hold-back needs a reason. **Apply** moves the whole semester in one step and
 starts attendance, the eligibility override and exam registration fresh. Every move is kept in
 `student_moves`; **Undo** under "Recent promotions" puts a batch back (students moved again since are
-left alone). Graduates leave Academic, Exams, roll sheets and teacher rosters, stay in Finance while
-they owe money (never billed again), and keep their portal login.
+left alone). Graduates move to the **Alumni** section (Academic office and HOD: grouped by graduation year,
+final CGPA, contacts, CSV download), leave Academic, Exams, roll sheets and teacher rosters, stay in
+Finance while they owe money (never billed again), and keep their portal login.
