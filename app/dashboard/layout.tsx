@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpenCheck, ClipboardCheck, LayoutDashboard, UsersRound, Wallet } from 'lucide-react';
+import { BookOpenCheck, ClipboardCheck, GraduationCap, LayoutDashboard, UsersRound, Wallet } from 'lucide-react';
 import Brand from '../components/Brand';
 import UserMenu from '../components/UserMenu';
 import { useSessionUser } from '../../utils/useSessionUser';
@@ -17,6 +17,7 @@ const NAV = [
   { href: '/dashboard/academic', label: 'Academic', icon: BookOpenCheck },
   { href: '/dashboard/exam', label: 'Exams', icon: ClipboardCheck },
   { href: '/dashboard/advisor', label: 'Advisory', icon: UsersRound },
+  { href: '/dashboard/alumni', label: 'Alumni', icon: GraduationCap },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

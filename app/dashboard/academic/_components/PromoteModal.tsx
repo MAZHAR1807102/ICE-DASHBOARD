@@ -228,7 +228,7 @@ export default function PromoteModal({ students, onClose, onSaved }: { students:
             </ul>
           </div>
         )}
-        {semester === 8 && <p className="flex items-center gap-1.5 text-xs text-slate-500"><PauseCircle className="size-3.5" aria-hidden /> Graduates leave Academic and Exams, and stay in Finance until their dues are paid.</p>}
+        {semester === 8 && <p className="flex items-center gap-1.5 text-xs text-slate-500"><PauseCircle className="size-3.5" aria-hidden /> Graduates move to Alumni, and stay in Finance until their dues are paid.</p>}
       </div>
     </Modal>
   );
