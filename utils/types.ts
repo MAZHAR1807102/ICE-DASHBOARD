@@ -32,7 +32,13 @@ export type Student = {
   mother_name?: string | null;
   father_name?: string | null;
   session?: string | null; // blank = worked out from the RU ID
+  // Promotion (migration 011): graduated students leave the active lists
+  status?: 'active' | 'graduated';
+  graduated_at?: string | null;
 };
+
+// Still studying — graduates are left out of Academic, Exams, roll sheets and teacher rosters.
+export const isActive = (s: { status?: string | null }) => (s.status ?? 'active') === 'active';
 
 export type Course = {
   id: string;
@@ -101,6 +107,7 @@ export type CourseResult = {
 
 // Figures RU publishes per student and semester (migration 006).
 export type SemesterResult = {
+  student_id?: string;
   semester: number;
   exam_title: string | null;
   earned_credits: number | null;

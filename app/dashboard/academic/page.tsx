@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
-import { BookOpen, ClipboardList, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
+import { ArrowUpCircle, BookOpen, ClipboardList, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
-import { SEMESTERS, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
+import { SEMESTERS, isActive, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
 import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
 import { useToast } from '../../components/Providers';
 import RosterTab from './_components/RosterTab';
@@ -13,6 +13,7 @@ import CurriculumTab from './_components/CurriculumTab';
 import NoticesTab from './_components/NoticesTab';
 import StudentModal from './_components/StudentModal';
 import ImportDetailsModal from './_components/ImportDetailsModal';
+import PromoteModal from './_components/PromoteModal';
 
 type Tab = 'roster' | 'ct_marks' | 'curriculum' | 'notices';
 
@@ -30,6 +31,7 @@ export default function AcademicDashboard() {
   const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
   const [studentModal, setStudentModal] = useState<{ student?: Student } | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isPromoteOpen, setIsPromoteOpen] = useState(false);
 
   const loadData = useCallback(() =>
     Promise.all([
@@ -37,7 +39,7 @@ export default function AcademicDashboard() {
       supabase.from('courses').select('*').order('semester', { ascending: true }),
       supabase.from('department_notices').select('*').order('created_at', { ascending: false }),
     ]).then(([studentRes, courseRes, noticeRes]) => {
-      if (studentRes.data) setStudents(studentRes.data as Student[]);
+      if (studentRes.data) setStudents((studentRes.data as Student[]).filter(isActive));
       if (courseRes.data) setCourses(courseRes.data as Course[]);
       if (noticeRes.data) setNotices(noticeRes.data as Notice[]);
       setVersion((v) => v + 1);
@@ -81,6 +83,7 @@ export default function AcademicDashboard() {
         title="Academic Coordination"
         description="Students, courses, attendance, CT marks and notices."
         actions={<>
+          <Button variant="secondary" icon={ArrowUpCircle} onClick={() => setIsPromoteOpen(true)}>Promote students</Button>
           <Button variant="secondary" icon={FileInput} onClick={() => setIsImportOpen(true)}>Import details</Button>
           <Button icon={UserPlus} onClick={() => setStudentModal({})}>Add student</Button>
         </>}
@@ -155,6 +158,9 @@ export default function AcademicDashboard() {
 
       {isImportOpen && (
         <ImportDetailsModal students={students} onClose={() => setIsImportOpen(false)} onSaved={(msg) => { showMessage(msg); setIsImportOpen(false); reload(); }} />
+      )}
+      {isPromoteOpen && (
+        <PromoteModal students={students} onClose={() => setIsPromoteOpen(false)} onSaved={(msg) => { showMessage(msg); setIsPromoteOpen(false); reload(); }} />
       )}
       {studentModal && (
         <StudentModal
