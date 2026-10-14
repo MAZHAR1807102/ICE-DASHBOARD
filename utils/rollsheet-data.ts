@@ -19,7 +19,7 @@ async function fetchAll<T>(build: (from: number) => PromiseLike<{ data: unknown;
 
 export async function loadExamData(): Promise<ExamData> {
   const [students, results, catalog] = await Promise.all([
-    fetchAll<SheetStudent>((from) => supabase.from('master_students').select('id, name, ru_id, college_id, semester, name_bn, mother_name, father_name, session').range(from, from + 999)),
+    fetchAll<SheetStudent>((from) => supabase.from('master_students').select('id, name, ru_id, college_id, semester, name_bn, mother_name, father_name, session').eq('status', 'active').range(from, from + 999)),
     fetchAll<CourseResult>((from) => supabase.from('course_results').select('*').range(from, from + 999)),
     supabase.from('courses').select('*'),
   ]);

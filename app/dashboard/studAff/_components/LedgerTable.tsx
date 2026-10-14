@@ -1,7 +1,7 @@
 'use client';
 
 import { History, HandCoins, Search, SlidersHorizontal } from 'lucide-react';
-import { totalDue, type Student } from '../../../../utils/types';
+import { isActive, totalDue, type Student } from '../../../../utils/types';
 import { MIN_ATTENDANCE_PERCENT } from '../../../../utils/eligibility';
 import { Fragment } from 'react';
 import { Badge, Button, EmptyState, GroupHeading, ReaddBadge, table, taka } from '../../../components/ui';
@@ -53,7 +53,7 @@ export default function LedgerTable({ students, cohorts, showSemester, onPayment
               <tr className={table.row}>
                 <td className={table.td}>
                   <p className="font-medium text-slate-900">{s.name}{cohorts.get(s.id) === 'readd' && <ReaddBadge />}</p>
-                  <p className="text-xs text-slate-500">{s.college_id} · RU {s.ru_id || '—'} · Sem {s.semester}</p>
+                  <p className="text-xs text-slate-500">{s.college_id} · RU {s.ru_id || '—'} · {isActive(s) ? `Sem ${s.semester}` : <b className="font-semibold text-violet-700">Graduated</b>}</p>
                 </td>
                 <td className={`${table.td} text-center`}>
                   <Badge tone={attendance < MIN_ATTENDANCE_PERCENT ? 'rose' : 'emerald'}>{attendance}%</Badge>

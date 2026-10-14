@@ -5,7 +5,7 @@ import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from
 import { AlertTriangle, BadgeCheck, CalendarRange, GraduationCap, Landmark, Search, Wallet } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
-import { SEMESTERS, totalDue, type Student } from '../../../utils/types';
+import { SEMESTERS, isActive, totalDue, type Student } from '../../../utils/types';
 import { Button, Card, CohortSelect, PageHeader, StatCard, inputClass, taka } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
 import LedgerTable from './_components/LedgerTable';
@@ -35,7 +35,8 @@ export default function StudentAffairsPage() {
       .order('ru_id', { ascending: false })
       .then(({ data, error }) => {
         if (error) toast.error(`Could not load students: ${error.message}`);
-        else setStudents(data as Student[]);
+        // Graduates stay here only while they still owe money.
+        else setStudents((data as Student[]).filter((s) => isActive(s) || totalDue(s) > 0));
         setLoading(false);
       }), [toast]);
 
@@ -43,7 +44,7 @@ export default function StudentAffairsPage() {
     fetchStudents();
   }, [fetchStudents]);
 
-  const cohorts = useMemo(() => classifyCohorts(students), [students]);
+  const cohorts = useMemo(() => classifyCohorts(students.filter(isActive)), [students]);
   const filteredStudents = useMemo(() => {
     const query = searchQuery.toLowerCase();
     return orderByCohort(students.filter((s) => {
@@ -75,18 +76,19 @@ export default function StudentAffairsPage() {
 
   // --- MASS ACTIONS (each is one all-or-nothing database call) ---
   const handleMassBill = async (billType: BillType) => {
-    if (filteredStudents.length === 0) return toast.info('No students match the current filter.');
+    const billable = filteredStudents.filter(isActive); // graduates are never billed again
+    if (billable.length === 0) return toast.info('No students match the current filter.');
     const multiplier = billType === 'Monthly' ? 6 : 1;
     const ok = await confirm({
-      title: `Bill ${billType} fee to ${filteredStudents.length} students?`,
+      title: `Bill ${billType} fee to ${billable.length} students?`,
       body: `Students shown (${scope}${searchQuery ? `, matching “${searchQuery}”` : ''}) are charged ${multiplier > 1 ? `${multiplier} × their monthly rate` : 'their contract rate'}.\nAnyone already billed ${billType} for their current semester is skipped automatically.`,
-      confirmLabel: `Bill ${filteredStudents.length} students`,
+      confirmLabel: `Bill ${billable.length} students`,
     });
     if (!ok) return;
 
     setBusy(billType);
     const { data, error } = await supabase.rpc('bill_students', {
-      p_student_ids: filteredStudents.map((s) => s.id),
+      p_student_ids: billable.map((s) => s.id),
       p_category: BILL_CATEGORY[billType],
     });
     setBusy(null);
@@ -98,7 +100,7 @@ export default function StudentAffairsPage() {
   };
 
   const handleAttendanceFines = async () => {
-    const targets = filteredStudents.filter((s) => (s.attendance_percentage || 0) < MIN_ATTENDANCE_PERCENT);
+    const targets = filteredStudents.filter((s) => isActive(s) && (s.attendance_percentage || 0) < MIN_ATTENDANCE_PERCENT);
     if (targets.length === 0) return toast.info(`No students in this view are below ${MIN_ATTENDANCE_PERCENT}% attendance.`);
     const ok = await confirm({
       title: `Fine ${targets.length} students ${taka(ATTENDANCE_FINE)}?`,

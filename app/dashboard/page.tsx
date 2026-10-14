@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, ArrowRight, BookOpenCheck, CalendarCheck, ClipboardCheck, GraduationCap, ShieldCheck, Users, UsersRound, Wallet } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../utils/eligibility';
-import { totalDue, type Student } from '../../utils/types';
+import { isActive, totalDue, type Student } from '../../utils/types';
 import { useSessionUser } from '../../utils/useSessionUser';
 import { Badge, Card, CardHeader, EmptyState, PageHeader, StatCard, table, taka } from '../components/ui';
 
@@ -47,10 +47,11 @@ export default function HodDashboard() {
   }, []);
 
   const firstName = user?.name?.split(' ')[0];
-  const list = students ?? [];
+  const everyone = students ?? [];
+  const list = everyone.filter(isActive);
   const attendance = (s: Student) => s.attendance_percentage || 0;
-  const outstanding = list.reduce((sum, s) => sum + totalDue(s), 0);
-  const owing = list.filter((s) => totalDue(s) > 0).length;
+  const outstanding = everyone.reduce((sum, s) => sum + totalDue(s), 0);
+  const owing = everyone.filter((s) => totalDue(s) > 0).length;
   const avgAttendance = list.length ? Math.round(list.reduce((sum, s) => sum + attendance(s), 0) / list.length) : 0;
   const atRisk = list.filter((s) => attendance(s) < MIN_ATTENDANCE_PERCENT).length;
   const escalations = list.map(escalationFor).filter((e): e is Escalation => e !== null);
