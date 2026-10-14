@@ -8,21 +8,12 @@ import { useToast } from '../../../components/Providers';
 import { supabase } from '../../../../utils/supabase';
 import { SEMESTERS, type Course, type CourseResult } from '../../../../utils/types';
 import { buildRollEntries, defaultMarksPerCredit, isTheoryCode, semesterTitle, sessionOf, type RollEntry, type RollSubject } from '../../../../utils/rollsheet';
+import { loadExamData, loadSubjectList, type SheetStudent } from '../../../../utils/rollsheet-data';
 
-type FullStudent = RollEntry['student'];
+type FullStudent = SheetStudent;
 type Step = 'exam' | 'subjects' | 'students';
 
 const GROUP_BADGE = { regular: { tone: 'slate', label: 'Regular' }, readd: { tone: 'amber', label: 'Readd' }, backlog: { tone: 'rose', label: 'Backlog' } } as const;
-
-async function fetchAll<T>(build: (from: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>) {
-  const rows: T[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build(from);
-    if (error) throw new Error(error.message);
-    rows.push(...((data ?? []) as T[]));
-    if (!data || (data as T[]).length < 1000) return rows;
-  }
-}
 
 // Exams → Roll sheet: choose the exam, check the subject list, check who sits what, download Word.
 export default function RollSheetModal({ onClose }: { onClose: () => void }) {
@@ -46,12 +37,8 @@ export default function RollSheetModal({ onClose }: { onClose: () => void }) {
 
   // Everything the sheet needs, loaded once.
   useEffect(() => {
-    Promise.all([
-      fetchAll<FullStudent>((from) => supabase.from('master_students').select('id, name, ru_id, college_id, semester, name_bn, mother_name, father_name, session').range(from, from + 999)),
-      fetchAll<CourseResult>((from) => supabase.from('course_results').select('*').range(from, from + 999)),
-      supabase.from('courses').select('*'),
-    ])
-      .then(([s, r, c]) => { setStudents(s); setResults(r); setCatalog((c.data ?? []) as Course[]); })
+    loadExamData()
+      .then((d) => { setStudents(d.students); setResults(d.results); setCatalog(d.catalog); })
       .catch((err) => toast.error(`Could not load data: ${err.message}`));
   }, [toast]);
 
@@ -60,27 +47,9 @@ export default function RollSheetModal({ onClose }: { onClose: () => void }) {
 
   // Subject list: the saved one, or a starting point from the course list + published results.
   const loadSubjects = async (sem: number) => {
-    const { data } = await supabase.from('roll_sheet_subjects').select('*').eq('semester', sem).order('position');
-    if (data && data.length) {
-      setSubjects(data.map((d) => ({ course_code: d.course_code, title: d.title, credit: d.credit === null ? null : Number(d.credit), is_theory: d.is_theory, position: d.position })));
-      setSubjectsSaved(true);
-      return;
-    }
-    const found = new Map<string, RollSubject>();
-    catalog.filter((c) => c.semester === sem).forEach((c) => {
-      const code = c.course_code.toUpperCase().replace(/\s+/g, '');
-      found.set(code, { course_code: code, title: c.course_name, credit: c.credit, is_theory: isTheoryCode(code), position: 0 });
-    });
-    results.filter((r) => r.semester === sem).forEach((r) => {
-      const code = r.course_code.toUpperCase();
-      if (!found.has(code)) found.set(code, { course_code: code, title: r.course_name ?? '', credit: Number(r.credit), is_theory: isTheoryCode(code), position: 0 });
-    });
-    // RU's usual order: non-CSE theory, then CSE theory, then labs — each by course number.
-    const rank = (s: RollSubject) => (s.is_theory ? (s.course_code.startsWith('CSE') ? 1 : 0) : 2);
-    const number = (s: RollSubject) => s.course_code.replace(/\D/g, '');
-    const list = [...found.values()].sort((a, b) => rank(a) - rank(b) || number(a).localeCompare(number(b)) || a.course_code.localeCompare(b.course_code)).map((s, i) => ({ ...s, position: i }));
-    setSubjects(list);
-    setSubjectsSaved(false);
+    const list = await loadSubjectList(sem, { catalog, results });
+    setSubjects(list.subjects);
+    setSubjectsSaved(list.saved);
   };
 
   const goToSubjects = async () => {
