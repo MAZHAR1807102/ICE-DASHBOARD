@@ -13,7 +13,8 @@ export async function POST(request: Request) {
 
     // 1. Fetch the students with their attendance and balances
     let query = supabase.from('master_students')
-      .select('id, attendance_percentage, exam_reg_status, eligibility_override, monthly_due, semester_due, exam_due, attendance_fine');
+      .select('id, attendance_percentage, exam_reg_status, eligibility_override, monthly_due, semester_due, exam_due, attendance_fine')
+      .eq('status', 'active');
 
     if (targetSemester && targetSemester !== 'All') {
       query = query.eq('semester', parseInt(targetSemester));

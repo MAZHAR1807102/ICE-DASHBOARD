@@ -22,14 +22,23 @@ export function attendanceSheetCsv(students: Student[]) {
   );
 }
 
-// A student's overall attendance is the average of their per-course attendance.
+// A student's overall attendance is the average of their per-course attendance in the courses of
+// their current semester (older semesters' courses stay in ct_marks but no longer count).
 export async function refreshGlobalAttendance(studentIds: string[]) {
   if (studentIds.length === 0) return;
-  const { data } = await supabase.from('ct_marks').select('student_id, course_attendance').in('student_id', studentIds);
-  if (!data) return;
+  const [marks, studentRows, courseRows] = await Promise.all([
+    supabase.from('ct_marks').select('student_id, course_code, course_attendance').in('student_id', studentIds),
+    supabase.from('master_students').select('id, semester').in('id', studentIds),
+    supabase.from('courses').select('semester, course_code'),
+  ]);
+  if (!marks.data || !studentRows.data || !courseRows.data) return;
 
+  const code = (c: string) => c.toUpperCase().replace(/\s+/g, '');
+  const semesterOf = new Map(studentRows.data.map((s) => [s.id, s.semester]));
+  const current = new Set(courseRows.data.map((c) => `${c.semester}:${code(c.course_code)}`));
   const byStudent = new Map<string, number[]>();
-  data.forEach((row) => {
+  marks.data.forEach((row) => {
+    if (!current.has(`${semesterOf.get(row.student_id)}:${code(row.course_code)}`)) return;
     const list = byStudent.get(row.student_id) ?? [];
     list.push(Number(row.course_attendance) || 0);
     byStudent.set(row.student_id, list);

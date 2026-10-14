@@ -39,6 +39,7 @@ export default function ExaminationDashboard() {
     supabase
       .from('master_students')
       .select('id, college_id, ru_id, name, semester, exam_reg_status, backlogs, internal_marks_status, attendance_percentage, cgpa, credits_earned')
+      .eq('status', 'active')
       .order('college_id', { ascending: true })
       .then(({ data, error }) => {
         if (!error && data) setStudents(data as ExamStudent[]);

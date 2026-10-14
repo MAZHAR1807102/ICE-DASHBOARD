@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../../utils/eligibility';
 import { academicStanding } from '../../../utils/grades';
-import { DEGREE_CREDITS, totalDue } from '../../../utils/types';
+import { DEGREE_CREDITS, isActive, totalDue } from '../../../utils/types';
 import type { Profile } from '../../../utils/profile';
 import OverviewTab from './OverviewTab';
 import CoursesTab from './CoursesTab';
@@ -62,7 +62,9 @@ export default function ProfileView({ profile }: { profile: Profile }) {
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-indigo-100">
                 <span>RU ID <b className="text-white">{student.ru_id || '—'}</b></span>
                 <span>College ID <b className="text-white">{student.college_id}</b></span>
-                <span>Semester <b className="text-white">{student.semester}</b></span>
+                {isActive(student)
+                  ? <span>Semester <b className="text-white">{student.semester}</b></span>
+                  : <span><b className="text-white">Graduated</b>{student.graduated_at ? ` ${new Date(student.graduated_at).getFullYear()}` : ''}</span>}
                 <span>Advisor <b className="text-white">{student.advisor || 'Not assigned'}</b></span>
               </div>
               {(student.student_contact || student.guardian_contact) && (
