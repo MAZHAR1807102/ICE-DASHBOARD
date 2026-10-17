@@ -147,3 +147,19 @@ starts attendance, the eligibility override and exam registration fresh. Every m
 left alone). Graduates move to the **Alumni** section (Academic office and HOD: grouped by graduation year,
 final CGPA, contacts, CSV download), leave Academic, Exams, roll sheets and teacher rosters, stay in
 Finance while they owe money (never billed again), and keep their portal login.
+
+---
+
+# Ending courses (012)
+
+Run **before** deploying the matching code.
+
+1. Supabase → SQL Editor → run `migrations/012_course_status.sql`.
+2. Deploy the code.
+
+Academic → **Curriculum**: every running course has **End course** (or **End all semester N courses**).
+Confirm the batch it ran for — suggested from the semester's Regular students (e.g. 2024-25) — and it
+moves to **Ended courses**, grouped by batch, with when and by whom. Ended courses leave the
+attendance / CT course picker and the teacher portal; their teachers can no longer change CT marks
+(the academic office and HOD still can), and the CA / lab mark sheets still list them. **Reopen**
+puts a course back to running.
