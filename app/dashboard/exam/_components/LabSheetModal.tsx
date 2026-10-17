@@ -12,8 +12,8 @@ import { defaultLabMarks, type LabMarks } from '../../../../utils/labsheet-docx'
 
 type LabRow = { course_code: string; title: string; credit: number | null; include: boolean; marks: LabMarks; internal: string; external: string };
 
-const toLabRow = (s: Pick<RollSubject, 'course_code' | 'title' | 'credit'>): LabRow => ({
-  course_code: s.course_code, title: s.title, credit: s.credit, include: true, marks: defaultLabMarks(s.credit), internal: '', external: '',
+const toLabRow = (s: Pick<RollSubject, 'course_code' | 'title' | 'credit'>, teacher = ''): LabRow => ({
+  course_code: s.course_code, title: s.title, credit: s.credit, include: true, marks: defaultLabMarks(s.credit), internal: teacher, external: '',
 });
 
 // Exams → Lab mark sheet: one page per 13 students of every lab course, for the examiners to fill in.
@@ -38,7 +38,11 @@ export default function LabSheetModal({ onClose }: { onClose: () => void }) {
     if (!data) return;
     loadSubjectList(semester, data).then(({ subjects }) => {
       setSubjects(subjects);
-      setLabs(subjects.filter((s) => !s.is_theory).map(toLabRow));
+      // The internal examiner starts as the course teacher from Academic → Curriculum.
+      const code = (c: string) => c.toUpperCase().replace(/\s+/g, '');
+      const teacher = (c: string) => data.catalog.find((x) => x.semester === semester && code(x.course_code) === code(c))?.teacher_name?.trim()
+        ?? data.catalog.find((x) => code(x.course_code) === code(c))?.teacher_name?.trim() ?? '';
+      setLabs(subjects.filter((s) => !s.is_theory).map((s) => toLabRow(s, teacher(s.course_code))));
     });
   }, [data, semester]);
 

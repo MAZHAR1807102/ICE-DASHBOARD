@@ -80,7 +80,7 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
       const { buildCaSheetDocx } = await import('../../../../utils/ca-sheet');
       const blob = await buildCaSheetDocx({
         department, examYear, date: signDate.trim() || undefined,
-        courses: chosen.map((s) => ({ course_code: s.code, title: s.course.course_name.trim(), credit: s.credit, semester: s.course.semester, rows: s.rows.map((r) => r.row) })),
+        courses: chosen.map((s) => ({ course_code: s.code, title: s.course.course_name.trim(), credit: s.credit, semester: s.course.semester, rows: s.rows.map((r) => r.row), teacher: s.course.teacher_name ?? undefined })),
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -173,6 +173,9 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
                       <td className="px-3 py-2">
                         <p className="font-mono text-xs font-semibold text-slate-900">{s.code} <span className="font-sans font-normal text-slate-500">· {s.credit} credits · {s.n} CTs</span></p>
                         <p className="text-sm text-slate-700">{s.course.course_name}</p>
+                        <p className={cx('text-xs', s.course.teacher_name?.trim() ? 'text-slate-500' : 'text-amber-700')}>
+                          {s.course.teacher_name?.trim() ? `Teacher: ${s.course.teacher_name.trim()}` : 'No teacher in Curriculum — Name is left blank'}
+                        </p>
                       </td>
                       <td className="px-3 py-2 text-center"><Badge tone={withCt === s.rows.length ? 'emerald' : withCt ? 'amber' : 'slate'}>{withCt} / {s.rows.length}</Badge></td>
                       <td className="px-3 py-2 text-center"><Badge tone={withAtt === s.rows.length ? 'emerald' : withAtt ? 'amber' : 'slate'}>{withAtt} / {s.rows.length}</Badge></td>

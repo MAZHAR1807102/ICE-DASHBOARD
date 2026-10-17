@@ -48,7 +48,7 @@ export function yearSemesterLine(courseCode: string, fallbackSemester: number) {
   return `${ORDINAL_WORD[Math.ceil(fallbackSemester / 2) - 1]} Year ${ORDINAL_WORD[(fallbackSemester - 1) % 2]} Semester`;
 }
 
-export type CaCourse = { course_code: string; title: string; credit: number; semester: number; rows: CaRow[] };
+export type CaCourse = { course_code: string; title: string; credit: number; semester: number; rows: CaRow[]; teacher?: string };
 export type CaSheetOptions = { department: string; examYear: string; courses: CaCourse[]; rowsPerPage?: number; date?: string };
 
 const FONT = 'Times New Roman';
@@ -127,13 +127,13 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
       ],
     }));
 
-    // Name · Signature · Date under a signature line.
+    // Name (the course teacher, from the course list) · Signature · Date under a signature line.
     children.push(new Paragraph({ spacing: { before: 900 }, children: [] }));
     children.push(new Paragraph({
       tabStops: [{ type: TabStopType.CENTER, position: WIDTH / 2 }, { type: TabStopType.RIGHT, position: WIDTH - 400 }],
       border: { top: none, bottom: line },
       spacing: { after: 120 },
-      children: [run('Name'), run('\tSignature'), run(opts.date ? `\tDate: ${opts.date}` : '\tDate')],
+      children: [run(course.teacher?.trim() ? `Name: ${course.teacher.trim()}` : 'Name'), run('\tSignature'), run(opts.date ? `\tDate: ${opts.date}` : '\tDate')],
     }));
   });
 
