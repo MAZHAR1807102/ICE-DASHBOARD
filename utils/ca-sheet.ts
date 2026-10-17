@@ -49,7 +49,7 @@ export function yearSemesterLine(courseCode: string, fallbackSemester: number) {
 }
 
 export type CaCourse = { course_code: string; title: string; credit: number; semester: number; rows: CaRow[] };
-export type CaSheetOptions = { department: string; examYear: string; courses: CaCourse[]; rowsPerPage?: number };
+export type CaSheetOptions = { department: string; examYear: string; courses: CaCourse[]; rowsPerPage?: number; date?: string };
 
 const FONT = 'Times New Roman';
 
@@ -133,7 +133,7 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
       tabStops: [{ type: TabStopType.CENTER, position: WIDTH / 2 }, { type: TabStopType.RIGHT, position: WIDTH - 400 }],
       border: { top: none, bottom: line },
       spacing: { after: 120 },
-      children: [run('Name'), run('\tSignature'), run('\tDate')],
+      children: [run('Name'), run('\tSignature'), run(opts.date ? `\tDate: ${opts.date}` : '\tDate')],
     }));
   });
 

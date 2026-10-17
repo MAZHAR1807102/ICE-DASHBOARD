@@ -28,6 +28,7 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
   const [semester, setSemester] = useState(1);
   const [examYear, setExamYear] = useState(String(new Date().getFullYear()));
   const [department, setDepartment] = useState('Department of Computer Science and Engineering (CSE), RU');
+  const [signDate, setSignDate] = useState('');
   const [rule, setRule] = useState<AttendanceRule>({ mode: 'bands', bands: DEFAULT_BANDS });
   const [include, setInclude] = useState<Record<string, boolean>>({});
   const [open, setOpen] = useState('');
@@ -78,7 +79,7 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
     try {
       const { buildCaSheetDocx } = await import('../../../../utils/ca-sheet');
       const blob = await buildCaSheetDocx({
-        department, examYear,
+        department, examYear, date: signDate.trim() || undefined,
         courses: chosen.map((s) => ({ course_code: s.code, title: s.course.course_name.trim(), credit: s.credit, semester: s.course.semester, rows: s.rows.map((r) => r.row) })),
       });
       const url = URL.createObjectURL(blob);
@@ -120,8 +121,11 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
               <option value="blank">Leave blank</option>
             </select>
           </Field>
-          <Field label="Department line" className="col-span-2 sm:col-span-4">
+          <Field label="Department line" className="col-span-2 sm:col-span-3">
             <input value={department} onChange={(e) => setDepartment(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="Date (signature line)">
+            <input value={signDate} onChange={(e) => setSignDate(e.target.value)} placeholder="e.g. 30-08-2026" className={inputClass} />
           </Field>
         </div>
 
