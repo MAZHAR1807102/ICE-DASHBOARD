@@ -49,7 +49,7 @@ export function yearSemesterLine(courseCode: string, fallbackSemester: number) {
 }
 
 export type CaCourse = { course_code: string; title: string; credit: number; semester: number; rows: CaRow[] };
-export type CaSheetOptions = { department: string; examYear: string; courses: CaCourse[] };
+export type CaSheetOptions = { department: string; examYear: string; courses: CaCourse[]; rowsPerPage?: number };
 
 const FONT = 'Times New Roman';
 
@@ -68,8 +68,17 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
     children: text.split('\n').map((t) => new Paragraph({ alignment: AlignmentType.CENTER, children: [run(t, { bold: o.bold, size: o.size ?? 20 })] })),
   });
 
+  // Like the department's sheet, every page carries the full course heading and its own signature
+  // line, so a course with more students than fit on a page is split into parts.
+  const perPage = Math.max(1, opts.rowsPerPage ?? 18);
+  const parts = opts.courses.flatMap((course) => {
+    const chunks = [];
+    for (let i = 0; i < Math.max(1, course.rows.length); i += perPage) chunks.push({ ...course, rows: course.rows.slice(i, i + perPage) });
+    return chunks;
+  });
+
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
-  opts.courses.forEach((course, index) => {
+  parts.forEach((course, index) => {
     const m = caMarks(course.credit);
     const n = ctCount({ credit: course.credit });
     const max = ctMax({ credit: course.credit });
