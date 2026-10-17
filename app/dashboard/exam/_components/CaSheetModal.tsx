@@ -10,7 +10,7 @@ import { classifyCohorts, orderByCohort } from '../../../../utils/cohort';
 import { ctCount, ctMax } from '../../../../utils/ct';
 import { isTheoryCode, semesterTitle } from '../../../../utils/rollsheet';
 import { DEFAULT_BANDS, caMarks, caRow, fmt, yearSemesterLine, type AttendanceRule } from '../../../../utils/ca-sheet';
-import { SEMESTERS, type Course, type CtMark, type Student } from '../../../../utils/types';
+import { SEMESTERS, isRunning, type Course, type CtMark, type Student } from '../../../../utils/types';
 
 type Person = Pick<Student, 'id' | 'name' | 'ru_id' | 'college_id' | 'semester'>;
 type Override = { cts?: (number | null)[]; attendance?: number | null };
@@ -171,7 +171,7 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
                     <tr key={s.code} className={cx(include[s.code] === false && 'opacity-50')}>
                       <td className="px-3 py-2"><input type="checkbox" checked={include[s.code] !== false} onChange={(e) => setInclude({ ...include, [s.code]: e.target.checked })} className="size-4" aria-label={`Include ${s.code}`} /></td>
                       <td className="px-3 py-2">
-                        <p className="font-mono text-xs font-semibold text-slate-900">{s.code} <span className="font-sans font-normal text-slate-500">· {s.credit} credits · {s.n} CTs</span></p>
+                        <p className="font-mono text-xs font-semibold text-slate-900">{s.code} <span className="font-sans font-normal text-slate-500">· {s.credit} credits · {s.n} CTs</span>{!isRunning(s.course) && <span className="ml-1.5 font-sans"><Badge tone="slate">Ended{s.course.ended_batch ? ` · ${s.course.ended_batch}` : ''}</Badge></span>}</p>
                         <p className="text-sm text-slate-700">{s.course.course_name}</p>
                         <p className={cx('text-xs', s.course.teacher_name?.trim() ? 'text-slate-500' : 'text-amber-700')}>
                           {s.course.teacher_name?.trim() ? `Teacher: ${s.course.teacher_name.trim()}` : 'No teacher in Curriculum — Name is left blank'}

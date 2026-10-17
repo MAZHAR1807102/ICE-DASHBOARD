@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
 import { ArrowUpCircle, BookOpen, ClipboardList, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
-import { SEMESTERS, isActive, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
+import { SEMESTERS, isActive, isRunning, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
 import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
 import { useToast } from '../../components/Providers';
 import RosterTab from './_components/RosterTab';
@@ -120,7 +120,7 @@ export default function AcademicDashboard() {
               aria-label="Course"
             >
               <option value="">{selectedSemester === 'All' ? 'Pick a semester first' : 'Select a course'}</option>
-              {displayedCourses.map((c) => <option key={c.course_code} value={c.course_code}>{c.course_code} — {c.course_name}</option>)}
+              {displayedCourses.filter(isRunning).map((c) => <option key={c.course_code} value={c.course_code}>{c.course_code} — {c.course_name}</option>)}
             </select>
           )}
         </div>
@@ -147,6 +147,7 @@ export default function AcademicDashboard() {
           <CurriculumTab
             key={selectedSemester}
             courses={displayedCourses}
+            students={students}
             selectedSemester={selectedSemester}
             onChanged={reload}
             showMessage={showMessage}

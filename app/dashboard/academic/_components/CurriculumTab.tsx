@@ -1,17 +1,21 @@
 'use client';
 
-import { useState } from 'react';
-import { BookOpen, CheckCircle2, Clock, Mail, Pencil, Plus, Send, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Archive, BookOpen, CheckCircle2, Clock, Flag, Mail, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
-import { SEMESTERS, type Course } from '../../../../utils/types';
+import { SEMESTERS, isRunning, type Course, type Student } from '../../../../utils/types';
+import { classifyCohorts } from '../../../../utils/cohort';
+import { sessionOf } from '../../../../utils/rollsheet';
+import { useSessionUser } from '../../../../utils/useSessionUser';
 import Modal from '../../../components/Modal';
 import { Badge, Button, Card, EmptyState, Field, inputClass } from '../../../components/ui';
 import { useConfirm } from '../../../components/Providers';
 
 type CourseForm = Partial<Course>;
 
-export default function CurriculumTab({ courses, selectedSemester, onChanged, showMessage, onCourseDeleted }: {
+export default function CurriculumTab({ courses: allCourses, students, selectedSemester, onChanged, showMessage, onCourseDeleted }: {
   courses: Course[];
+  students: Student[];
   selectedSemester: string;
   onChanged: () => void;
   showMessage: (msg: string) => void;
@@ -22,6 +26,50 @@ export default function CurriculumTab({ courses, selectedSemester, onChanged, sh
   const [newCourse, setNewCourse] = useState<CourseForm>(defaultForm);
   const [editing, setEditing] = useState<Course | null>(null);
   const [sendingFor, setSendingFor] = useState<string | null>(null);
+  const [ending, setEnding] = useState<{ list: Course[]; batch: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const user = useSessionUser();
+
+  // Running courses are worked on; ended ones are kept per batch for the record and exam documents.
+  const courses = allCourses.filter(isRunning);
+  const ended = useMemo(() => {
+    const groups = new Map<string, Course[]>();
+    allCourses.filter((c) => !isRunning(c)).forEach((c) => {
+      const key = `${c.ended_batch || 'Batch not recorded'} · Semester ${c.semester}`;
+      groups.set(key, [...(groups.get(key) ?? []), c]);
+    });
+    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [allCourses]);
+
+  // The batch a course ran for: the session of the semester's Regular students (e.g. "2024-25").
+  const cohorts = useMemo(() => classifyCohorts(students), [students]);
+  const batchOf = (semester: number) => {
+    const regular = students.find((s) => s.semester === semester && cohorts.get(s.id) === 'regular');
+    return regular ? sessionOf(regular) : '';
+  };
+
+  const endCourses = async () => {
+    if (!ending) return;
+    if (!ending.batch.trim()) return showMessage('Error: enter the batch (session) these courses ran for.');
+    setBusy(true);
+    const { error } = await supabase.from('courses')
+      .update({ status: 'ended', ended_at: new Date().toISOString(), ended_batch: ending.batch.trim(), ended_by_name: user?.name ?? null })
+      .in('id', ending.list.map((c) => c.id));
+    setBusy(false);
+    if (error) return showMessage(`Error: ${error.message}`);
+    showMessage(`${ending.list.length === 1 ? ending.list[0].course_code : `${ending.list.length} courses`} ended for batch ${ending.batch.trim()}.`);
+    setEnding(null);
+    onChanged();
+  };
+
+  const reopen = async (course: Course) => {
+    const ok = await confirm({ title: `Reopen ${course.course_code}?`, body: 'It becomes a running course again: back in attendance, CT entry and the teacher portal.', confirmLabel: 'Reopen' });
+    if (!ok) return;
+    const { error } = await supabase.from('courses').update({ status: 'running', ended_at: null, ended_batch: null, ended_by_name: null }).eq('id', course.id);
+    if (error) return showMessage(`Error: ${error.message}`);
+    showMessage(`${course.course_code} is running again.`);
+    onChanged();
+  };
 
   // Emails each course teacher a sign-in link to the Teacher Portal, where they enter CT marks.
   const sendTeacherLinks = async (targets: Course[], key: string) => {
@@ -117,18 +165,25 @@ export default function CurriculumTab({ courses, selectedSemester, onChanged, sh
       <div>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="font-semibold text-slate-900">Course Catalog {selectedSemester !== 'All' ? `· Semester ${selectedSemester}` : ''}</h3>
+            <h3 className="font-semibold text-slate-900">Running courses {selectedSemester !== 'All' ? `· Semester ${selectedSemester}` : ''}</h3>
             <p className="text-sm text-slate-500">{courses.length} course{courses.length === 1 ? '' : 's'} · {courses.filter((c) => c.ct_saved_at).length} with CT marks submitted</p>
           </div>
           {courses.length > 0 && (
-            <Button icon={Send} loading={sendingFor === 'all'} disabled={sendingFor !== null} onClick={() => sendTeacherLinks(courses, 'all')}>
-              Email CT links to teachers
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {selectedSemester !== 'All' && (
+                <Button variant="secondary" icon={Flag} onClick={() => setEnding({ list: courses, batch: batchOf(Number(selectedSemester)) })}>
+                  End all semester {selectedSemester} courses
+                </Button>
+              )}
+              <Button icon={Send} loading={sendingFor === 'all'} disabled={sendingFor !== null} onClick={() => sendTeacherLinks(courses, 'all')}>
+                Email CT links to teachers
+              </Button>
+            </div>
           )}
         </div>
 
         {courses.length === 0 ? (
-          <Card><EmptyState icon={BookOpen} title="No courses yet" body="Add the semester's running courses above." /></Card>
+          <Card><EmptyState icon={BookOpen} title="No running courses" body="Add the semester's running courses above." /></Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {courses.map((c) => (
@@ -162,17 +217,68 @@ export default function CurriculumTab({ courses, selectedSemester, onChanged, sh
                       <Clock className="size-4" aria-hidden /> CT marks not submitted yet
                     </span>
                   )}
-                  {c.teacher_email && (
-                    <Button size="xs" variant="ghost" icon={Send} loading={sendingFor === c.id} disabled={sendingFor !== null} onClick={() => sendTeacherLinks([c], c.id)} className="text-indigo-600">
-                      Send link
+                  <div className="flex">
+                    {c.teacher_email && (
+                      <Button size="xs" variant="ghost" icon={Send} loading={sendingFor === c.id} disabled={sendingFor !== null} onClick={() => sendTeacherLinks([c], c.id)} className="text-indigo-600">
+                        Send link
+                      </Button>
+                    )}
+                    <Button size="xs" variant="ghost" icon={Flag} onClick={() => setEnding({ list: [c], batch: batchOf(c.semester) })} className="text-slate-600">
+                      End course
                     </Button>
-                  )}
+                  </div>
                 </div>
               </Card>
             ))}
           </div>
         )}
       </div>
+
+      {ended.length > 0 && (
+        <div>
+          <h3 className="mb-1 flex items-center gap-2 font-semibold text-slate-900"><Archive className="size-4 text-slate-500" aria-hidden /> Ended courses</h3>
+          <p className="mb-3 text-sm text-slate-500">Kept for the record and exam documents. Teachers can no longer change their CT marks.</p>
+          <div className="space-y-4">
+            {ended.map(([group, list]) => (
+              <Card key={group} className="overflow-hidden">
+                <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Batch {group} · {list.length} course{list.length === 1 ? '' : 's'}</p>
+                <ul className="divide-y divide-slate-100">
+                  {list.map((c) => (
+                    <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900"><span className="font-mono text-xs text-indigo-600">{c.course_code}</span> {c.course_name}</p>
+                        <p className="text-xs text-slate-500">
+                          {c.teacher_name || 'No teacher'} · ended {c.ended_at ? new Date(c.ended_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}{c.ended_by_name ? ` by ${c.ended_by_name}` : ''}
+                        </p>
+                      </div>
+                      <Button size="xs" variant="ghost" icon={RotateCcw} onClick={() => reopen(c)}>Reopen</Button>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ending && (
+        <Modal
+          title={ending.list.length === 1 ? `End ${ending.list[0].course_code}?` : `End ${ending.list.length} semester ${ending.list[0].semester} courses?`}
+          description="The course moves to Ended courses for this batch. It leaves attendance and CT entry, and its teacher can no longer change CT marks. You can reopen it."
+          size="sm"
+          onClose={() => setEnding(null)}
+        >
+          <div className="space-y-4">
+            {ending.list.length > 1 && <p className="text-sm text-slate-600">{ending.list.map((c) => c.course_code).join(', ')}</p>}
+            <Field label="Batch (session)" hint="The batch that took this course — worked out from the semester's Regular students.">
+              <input value={ending.batch} onChange={(e) => setEnding({ ...ending, batch: e.target.value })} placeholder="e.g. 2024-25" className={inputClass} autoFocus />
+            </Field>
+            <Button icon={Flag} loading={busy} onClick={endCourses} className="w-full">
+              {ending.list.length === 1 ? 'End course' : `End ${ending.list.length} courses`}
+            </Button>
+          </div>
+        </Modal>
+      )}
 
       {editing && (
         <Modal title="Edit course" description={`${editing.course_code} · Semester ${editing.semester}`} onClose={() => setEditing(null)}>

@@ -51,7 +51,14 @@ export type Course = {
   attendance_sheet_url: string | null;
   ct_saved_at?: string | null; // set when the course teacher saves CT marks (migration 005)
   ct_saved_by?: string | null;
+  // Ended for the batch that took it (migration 012); ended courses leave attendance, CT entry and the teacher portal
+  status?: 'running' | 'ended';
+  ended_at?: string | null;
+  ended_batch?: string | null;
+  ended_by_name?: string | null;
 };
+
+export const isRunning = (c: { status?: string | null }) => (c.status ?? 'running') === 'running';
 
 export type CtMark = {
   student_id: string;
