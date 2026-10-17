@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, groupHeadings, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
-import { Ban, CheckCircle2, Clock, FileBadge, FileStack, FlaskConical, GraduationCap, History, ScanSearch, ScrollText, Search, Users } from 'lucide-react';
+import { Ban, CheckCircle2, Clock, FileBadge, FileStack, FlaskConical, GraduationCap, History, ScanSearch, ScrollText, Search, Sheet, Users } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
 import { DEGREE_CREDITS, SEMESTERS, type Student } from '../../../utils/types';
@@ -14,6 +14,7 @@ import PublishedResultsModal from './_components/PublishedResultsModal';
 import StudentResultsModal from './_components/StudentResultsModal';
 import RollSheetModal from './_components/RollSheetModal';
 import LabSheetModal from './_components/LabSheetModal';
+import CaSheetModal from './_components/CaSheetModal';
 
 type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage' | 'cgpa' | 'credits_earned'>;
 
@@ -34,6 +35,7 @@ export default function ExaminationDashboard() {
   const [resultsFor, setResultsFor] = useState<ExamStudent | null>(null);
   const [isRollSheetOpen, setIsRollSheetOpen] = useState(false);
   const [isLabSheetOpen, setIsLabSheetOpen] = useState(false);
+  const [isCaSheetOpen, setIsCaSheetOpen] = useState(false);
 
   const fetchExamData = useCallback(() =>
     supabase
@@ -102,6 +104,7 @@ export default function ExaminationDashboard() {
           <Button variant="secondary" icon={FileStack} onClick={() => setIsPublishedOpen(true)}>Published results</Button>
           <Button variant="secondary" icon={ScrollText} onClick={() => setIsRollSheetOpen(true)}>Roll sheet</Button>
           <Button variant="secondary" icon={FlaskConical} onClick={() => setIsLabSheetOpen(true)}>Lab mark sheet</Button>
+          <Button variant="secondary" icon={Sheet} onClick={() => setIsCaSheetOpen(true)}>CA mark sheet</Button>
           <Button icon={GraduationCap} onClick={() => setIsPublishOpen(true)}>Publish Results</Button>
         </>}
       />
@@ -196,6 +199,7 @@ export default function ExaminationDashboard() {
 
       {isRollSheetOpen && <RollSheetModal onClose={() => setIsRollSheetOpen(false)} />}
       {isLabSheetOpen && <LabSheetModal onClose={() => setIsLabSheetOpen(false)} />}
+      {isCaSheetOpen && <CaSheetModal onClose={() => setIsCaSheetOpen(false)} />}
       {resultsFor && <StudentResultsModal student={resultsFor} onClose={() => setResultsFor(null)} onChanged={fetchExamData} />}
       {isPublishedOpen && <PublishedResultsModal onClose={() => setIsPublishedOpen(false)} onChanged={fetchExamData} />}
       {isStartingOpen && <StartingCgpaModal students={students} onClose={() => setIsStartingOpen(false)} onSaved={fetchExamData} />}
