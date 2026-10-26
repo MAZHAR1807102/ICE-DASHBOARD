@@ -2,26 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
-import { ArrowUpCircle, BookOpen, ClipboardList, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
+import { ArrowUpCircle, BookOpen, ClipboardList, GraduationCap, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
-import { SEMESTERS, isActive, isRunning, type Course, type CtMark, type Notice, type Student } from '../../../utils/types';
+import { SEMESTERS, isActive, isRunning, type Course, type CtMark, type Notice, type Student, type Teacher } from '../../../utils/types';
 import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
 import { useToast } from '../../components/Providers';
 import RosterTab from './_components/RosterTab';
 import CtMarksTab from './_components/CtMarksTab';
 import CurriculumTab from './_components/CurriculumTab';
+import TeachersTab from './_components/TeachersTab';
 import NoticesTab from './_components/NoticesTab';
 import StudentModal from './_components/StudentModal';
 import ImportDetailsModal from './_components/ImportDetailsModal';
 import PromoteModal from './_components/PromoteModal';
 
-type Tab = 'roster' | 'ct_marks' | 'curriculum' | 'notices';
+type Tab = 'roster' | 'ct_marks' | 'curriculum' | 'teachers' | 'notices';
 
 export default function AcademicDashboard() {
   const toast = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [marks, setMarks] = useState<{ course: string; rows: Record<string, CtMark> }>({ course: '', rows: {} });
   const [version, setVersion] = useState(0); // bumps on every reload so tabs reset their unsaved edits
 
@@ -38,10 +40,12 @@ export default function AcademicDashboard() {
       supabase.from('master_students').select('*').order('ru_id', { ascending: false }),
       supabase.from('courses').select('*').order('semester', { ascending: true }),
       supabase.from('department_notices').select('*').order('created_at', { ascending: false }),
-    ]).then(([studentRes, courseRes, noticeRes]) => {
+      supabase.from('teachers').select('*').order('name'),
+    ]).then(([studentRes, courseRes, noticeRes, teacherRes]) => {
       if (studentRes.data) setStudents((studentRes.data as Student[]).filter(isActive));
       if (courseRes.data) setCourses(courseRes.data as Course[]);
       if (noticeRes.data) setNotices(noticeRes.data as Notice[]);
+      if (teacherRes.data) setTeachers(teacherRes.data as Teacher[]);
       setVersion((v) => v + 1);
     }), []);
 
@@ -97,6 +101,7 @@ export default function AcademicDashboard() {
             { id: 'roster', label: 'Roster & Attendance', icon: UsersRound },
             { id: 'ct_marks', label: 'CT Marks', icon: ClipboardList },
             { id: 'curriculum', label: 'Curriculum', icon: BookOpen },
+            { id: 'teachers', label: 'Teachers', icon: GraduationCap, count: teachers.length },
             { id: 'notices', label: 'Broadcasts', icon: Megaphone, count: notices.length },
           ]}
         />
@@ -148,12 +153,14 @@ export default function AcademicDashboard() {
             key={selectedSemester}
             courses={displayedCourses}
             students={students}
+            teachers={teachers}
             selectedSemester={selectedSemester}
             onChanged={reload}
             showMessage={showMessage}
             onCourseDeleted={(code) => { if (code === selectedCourseCode) setSelectedCourseCode(''); }}
           />
         )}
+        {activeTab === 'teachers' && <TeachersTab teachers={teachers} courses={courses} onChanged={reload} showMessage={showMessage} />}
         {activeTab === 'notices' && <NoticesTab notices={notices} onChanged={reload} showMessage={showMessage} />}
       </Card>
 
