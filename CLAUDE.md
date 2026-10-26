@@ -16,9 +16,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Live on `main`: security (Auth + RLS), finance ledger, results (RU sheet import, running CGPA,
   editing with history), teacher portal (CT marks via emailed link), student portal, Regular/Readd
   grouping, roll sheets (Word) + Bangla/Bijoy import, admit-card lists, view-as-student,
-  lab mark sheet, CA mark sheet, promotion + alumni, ending courses (migrations 001–012 applied).
-- **Not deployed yet:** branch `teachers` (b2537c9) — Teachers list + Assign teachers in Curriculum,
-  needs **migration 013** run in Supabase first.
+  lab mark sheet, CA mark sheet, promotion + alumni, ending courses, teachers list (migrations 001–013 applied).
+- Teachers list + Assign teachers (migration 013) deployed 2026-10-26.
 - Not built: advisor portal (user said leave it), password cleanup (user chose to keep default
   student password; don't raise it).
 
@@ -75,7 +74,7 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Course codes in `courses` can have trailing spaces — normalise before matching.
 
 ## Next steps / open questions
-- Run migration 013, then deploy `teachers`.
+- (none pending deploy)
 - Possible duplicate teacher: "Md Shohanur Rahman" (sohanurr973@) vs "Sohanur Rahman"
   (sohanurr092@ on CSE2131) — the instructors sheet suggests 973 is right; ask before merging.
 - Attendance-mark bands for the CA sheet are an assumption (90%→full … <60%→0); confirm with RU rule.
