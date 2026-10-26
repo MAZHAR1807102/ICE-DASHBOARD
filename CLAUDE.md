@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-10-26
+Last updated: 2026-10-26 (teachers merged: Sohanur Rahman → Md Shohanur Rahman, sohanurr973@; 13 teachers)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -75,6 +75,4 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 
 ## Next steps / open questions
 - (none pending deploy)
-- Possible duplicate teacher: "Md Shohanur Rahman" (sohanurr973@) vs "Sohanur Rahman"
-  (sohanurr092@ on CSE2131) — the instructors sheet suggests 973 is right; ask before merging.
 - Attendance-mark bands for the CA sheet are an assumption (90%→full … <60%→0); confirm with RU rule.
