@@ -163,3 +163,20 @@ moves to **Ended courses**, grouped by batch, with when and by whom. Ended cours
 attendance / CT course picker and the teacher portal; their teachers can no longer change CT marks
 (the academic office and HOD still can), and the CA / lab mark sheets still list them. **Reopen**
 puts a course back to running.
+
+---
+
+# Teachers list (013)
+
+Run **before** deploying the matching code.
+
+1. Supabase → SQL Editor → run `migrations/013_teachers.sql`.
+2. Deploy the code.
+
+Creates `teachers` (one row per email), filled from every teacher already on a course plus the
+department's Course Instructors sheet (designations, phones), and unifies "Sharmin Akter/Aktar".
+A trigger adds whoever is put on a course to the list automatically.
+Academic → **Teachers**: everyone with contact details and every course they have had (running and
+ended, by batch); Add / Edit / Assign course. Academic → **Curriculum**: pick a semester → **Assign
+teachers** lists all its courses with a teacher box (type or pick a suggestion; the email fills in)
+and one Save; the Add / Edit course forms suggest teachers too.
