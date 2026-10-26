@@ -60,6 +60,22 @@ export type Course = {
 
 export const isRunning = (c: { status?: string | null }) => (c.status ?? 'running') === 'running';
 
+// Course teachers (migration 013): picked from this list when assigning courses.
+export type Teacher = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  designation: string | null;
+  department: string | null;
+  notes: string | null;
+};
+
+const sameEmail = (a?: string | null, b?: string | null) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+// A course belongs to a teacher by email, or by name when the course has no email.
+export const teachesCourse = (t: Pick<Teacher, 'name' | 'email'>, c: Pick<Course, 'teacher_name' | 'teacher_email'>) =>
+  sameEmail(t.email, c.teacher_email) || (!c.teacher_email?.trim() && !!c.teacher_name && c.teacher_name.trim().toLowerCase() === t.name.trim().toLowerCase());
+
 export type CtMark = {
   student_id: string;
   course_code: string;

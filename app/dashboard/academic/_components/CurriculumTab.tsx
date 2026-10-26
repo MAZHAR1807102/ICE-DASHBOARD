@@ -3,19 +3,21 @@
 import { useMemo, useState } from 'react';
 import { Archive, BookOpen, CheckCircle2, Clock, Flag, Mail, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react';
 import { supabase } from '../../../../utils/supabase';
-import { SEMESTERS, isRunning, type Course, type Student } from '../../../../utils/types';
+import { SEMESTERS, isRunning, type Course, type Student, type Teacher } from '../../../../utils/types';
 import { classifyCohorts } from '../../../../utils/cohort';
 import { sessionOf } from '../../../../utils/rollsheet';
 import { useSessionUser } from '../../../../utils/useSessionUser';
 import Modal from '../../../components/Modal';
 import { Badge, Button, Card, EmptyState, Field, inputClass } from '../../../components/ui';
 import { useConfirm } from '../../../components/Providers';
+import AssignTeachers from './AssignTeachers';
 
 type CourseForm = Partial<Course>;
 
-export default function CurriculumTab({ courses: allCourses, students, selectedSemester, onChanged, showMessage, onCourseDeleted }: {
+export default function CurriculumTab({ courses: allCourses, students, teachers, selectedSemester, onChanged, showMessage, onCourseDeleted }: {
   courses: Course[];
   students: Student[];
+  teachers: Teacher[];
   selectedSemester: string;
   onChanged: () => void;
   showMessage: (msg: string) => void;
@@ -131,13 +133,53 @@ export default function CurriculumTab({ courses: allCourses, students, selectedS
   };
 
   const text = (form: CourseForm, setForm: (f: CourseForm) => void, key: 'course_code' | 'course_name' | 'teacher_name' | 'teacher_email', label: string, placeholder = '') => (
-    <Field label={label}>
-      <input type={key === 'teacher_email' ? 'email' : 'text'} placeholder={placeholder} value={form[key] || ''} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className={inputClass} />
+    <Field label={label} hint={key === 'teacher_name' ? 'Pick from the Teachers list, or type a new name — they are added to it.' : undefined}>
+      <input
+        type={key === 'teacher_email' ? 'email' : 'text'}
+        placeholder={placeholder}
+        value={form[key] || ''}
+        list={key === 'teacher_name' ? 'teacher-names' : key === 'teacher_email' ? 'teacher-emails' : undefined}
+        onChange={(e) => {
+          const value = e.target.value;
+          // Picking a teacher from the list fills in their email (and picking an email, their name).
+          const byName = key === 'teacher_name' ? teachers.find((t) => t.name.toLowerCase() === value.trim().toLowerCase()) : undefined;
+          const byEmail = key === 'teacher_email' ? teachers.find((t) => t.email && t.email === value.trim().toLowerCase()) : undefined;
+          setForm({
+            ...form,
+            [key]: value,
+            ...(byName ? { teacher_name: byName.name, teacher_email: byName.email ?? form.teacher_email } : {}),
+            // A new name must not keep another teacher's email.
+            ...(key === 'teacher_name' && !byName && teachers.some((t) => t.email && t.email === form.teacher_email?.trim().toLowerCase()) ? { teacher_email: '' } : {}),
+            ...(byEmail && !form.teacher_name?.trim() ? { teacher_name: byEmail.name } : {}),
+          });
+        }}
+        className={inputClass}
+        autoComplete="off"
+      />
     </Field>
   );
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
+      <datalist id="teacher-names">
+        {teachers.map((t) => <option key={t.id} value={t.name}>{[t.designation, t.email].filter(Boolean).join(' · ')}</option>)}
+      </datalist>
+      <datalist id="teacher-emails">
+        {teachers.filter((t) => t.email).map((t) => <option key={t.id} value={t.email!}>{t.name}</option>)}
+      </datalist>
+      {selectedSemester === 'All' ? (
+        <p className="rounded-xl bg-indigo-50/60 px-4 py-3 text-sm text-indigo-900 ring-1 ring-indigo-100">Pick a semester above to see all its courses and assign their teachers in one go.</p>
+      ) : (
+        <AssignTeachers
+          key={courses.map((c) => `${c.id}:${c.teacher_name}:${c.teacher_email}`).join('|')}
+          courses={[...courses].sort((a, b) => a.course_code.localeCompare(b.course_code))}
+          teachers={teachers}
+          semesterLabel={`Semester ${selectedSemester}`}
+          onChanged={onChanged}
+          showMessage={showMessage}
+        />
+      )}
+
       <form onSubmit={handleCreate} className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200 sm:p-5">
         <p className="mb-4 font-semibold text-slate-900">Add a course</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
