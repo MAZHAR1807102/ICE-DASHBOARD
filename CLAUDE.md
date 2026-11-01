@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-01 (Exams → Admit card distribution sheet deployed)
+Last updated: 2026-11-01 (admit card distribution sheet deployed; read-only walkthrough of the live site — no errors)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -10,7 +10,7 @@ Student management system for the CSE department of **Imperial College of Engine
 Finance, Academic, Exam office, Advisor (portal not built yet), course Teachers, Students.
 Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 4 + Supabase
 (Postgres, Auth, Row Level Security). Repo: github.com/MAZHAR1807102/ICE-DASHBOARD; Vercel deploys
-`main` automatically. The owner (the user) is a lecturer there, not deeply technical.
+`main` automatically to https://ice-dashboard-nine.vercel.app. The owner (the user) is a lecturer there, not deeply technical.
 
 ## Status
 - Live on `main`: security (Auth + RLS), finance ledger, results (RU sheet import, running CGPA,
@@ -69,6 +69,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
   migration file, assert behaviour.
 - Browser: Puppeteer + `npx next dev -p 3123`, sign in via admin `generateLink` magic link;
   intercept POST/PATCH/DELETE to Supabase so nothing is written; fake tables of unapplied migrations.
+  `rpc/teacher_courses` and `rpc/teacher_roster` are POSTs that only read — let them through.
+  The same tour works against the live URL (cookies on its domain, `secure: true`).
 - Word output: `osascript` → Microsoft Word "save as PDF", then render pages with pypdfium2.
 - Always `npx tsc --noEmit -p .`, `npx eslint`, `npm run build` before committing.
 
@@ -85,4 +87,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 
 ## Next steps / open questions
 - (none pending deploy)
+- Data gaps seen 2026-11-01 (not bugs): attendance entered only for semester 4, so most students
+  show 0% and "Exam blocked"; advisors set for 1 of 147 students.
+- Possible polish: on phones the roster's "View as student" button squeezes the name column, and
+  roster/exam/finance lists are very long (no per-semester collapse).
 - Attendance-mark bands for the CA sheet are an assumption (90%→full … <60%→0); confirm with RU rule.
