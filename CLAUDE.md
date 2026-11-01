@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-10-26 (teachers merged: Sohanur Rahman → Md Shohanur Rahman, sohanurr973@; 13 teachers)
+Last updated: 2026-11-01 (Academic → Attendance sheet button deployed)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -16,7 +16,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Live on `main`: security (Auth + RLS), finance ledger, results (RU sheet import, running CGPA,
   editing with history), teacher portal (CT marks via emailed link), student portal, Regular/Readd
   grouping, roll sheets (Word) + Bangla/Bijoy import, admit-card lists, view-as-student,
-  lab mark sheet, CA mark sheet, promotion + alumni, ending courses, teachers list (migrations 001–013 applied).
+  lab mark sheet, CA mark sheet, promotion + alumni, ending courses, teachers list (migrations 001–013 applied),
+  attendance sheet (Academic header button, no migration).
 - Teachers list + Assign teachers (migration 013) deployed 2026-10-26.
 - Not built: advisor portal (user said leave it), password cleanup (user chose to keep default
   student password; don't raise it).
@@ -53,6 +54,9 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - CA sheet: 25 per credit; Attendance 10%, CT 20%, Theory 70%; 2-credit 3 CTs (out of 10),
   3-credit 4 CTs (out of 15); CT avg = mean to nearest 0.5; 18 students a page, heading + signature
   (teacher name from the course list) on every page.
+- Attendance sheet (`utils/attendance-sheet.ts`): copies the department's own sheet, which is in
+  **Cambria** (not Times New Roman), A4 landscape; one sheet per running course of the semester;
+  semester's students Regular then Readd by roll; 20 day boxes + P/A/%; 26 students a page.
 - Promotion: suggest hold-back only when RU result says fail; held back = stays (becomes Readd);
   semester 8 → graduated (Alumni; Finance keeps them while owing); move resets attendance,
   eligibility override, exam registration.
@@ -66,6 +70,9 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Always `npx tsc --noEmit -p .`, `npx eslint`, `npm run build` before committing.
 
 ## Pitfalls already hit
+- Cloud (claude.ai) sessions: npm registry blocked → no `npm ci`, so no tsc/eslint/build of the app;
+  a global `docx` + LibreOffice (Caladea ≈ Cambria) can still render generators. Vercel *preview*
+  builds fail for every branch (env vars are Production-only) — not a code signal. Commit as the owner.
 - React-compiler lint: load data with `.then()` in effects; no mutating variables during render.
 - New `master_students` columns need explicit column grants (balances are ledger-only).
 - zsh: an unmatched glob aborts a `&&` chain; puppeteer's Chrome must be reinstalled after updates.
