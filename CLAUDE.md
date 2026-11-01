@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-01 (Academic → Attendance sheet button deployed)
+Last updated: 2026-11-01 (Exams → Admit card distribution sheet deployed)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -17,7 +17,7 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
   editing with history), teacher portal (CT marks via emailed link), student portal, Regular/Readd
   grouping, roll sheets (Word) + Bangla/Bijoy import, admit-card lists, view-as-student,
   lab mark sheet, CA mark sheet, promotion + alumni, ending courses, teachers list (migrations 001–013 applied),
-  attendance sheet (Academic header button, no migration).
+  attendance sheet (Academic header button), admit card distribution sheet (Exam page button); no migrations.
 - Teachers list + Assign teachers (migration 013) deployed 2026-10-26.
 - Not built: advisor portal (user said leave it), password cleanup (user chose to keep default
   student password; don't raise it).
@@ -57,6 +57,9 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Attendance sheet (`utils/attendance-sheet.ts`): copies the department's own sheet, which is in
   **Cambria** (not Times New Roman), A4 landscape; one sheet per running course of the semester;
   semester's students Regular then Readd by roll; 20 day boxes + P/A/%; 26 students a page.
+- Admit card distribution (`utils/admit-card.ts`): same examinees as the roll sheet (`buildRollEntries`);
+  Word, A4 portrait, Arial (their sample was a Helvetica PDF); exam title from course codes, not the
+  semester number; Regular / Readd / Backlog tables, continuous SL; letterhead + Code No- 385 each page.
 - Promotion: suggest hold-back only when RU result says fail; held back = stays (becomes Readd);
   semester 8 → graduated (Alumni; Finance keeps them while owing); move resets attendance,
   eligibility override, exam registration.
