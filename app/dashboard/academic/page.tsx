@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
-import { ArrowUpCircle, BookOpen, ClipboardList, GraduationCap, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
+import { ArrowUpCircle, BookOpen, CalendarCheck, ClipboardList, GraduationCap, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { SEMESTERS, isActive, isRunning, type Course, type CtMark, type Notice, type Student, type Teacher } from '../../../utils/types';
 import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
@@ -15,6 +15,7 @@ import NoticesTab from './_components/NoticesTab';
 import StudentModal from './_components/StudentModal';
 import ImportDetailsModal from './_components/ImportDetailsModal';
 import PromoteModal from './_components/PromoteModal';
+import AttendanceSheetModal from './_components/AttendanceSheetModal';
 
 type Tab = 'roster' | 'ct_marks' | 'curriculum' | 'teachers' | 'notices';
 
@@ -34,6 +35,7 @@ export default function AcademicDashboard() {
   const [studentModal, setStudentModal] = useState<{ student?: Student } | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isPromoteOpen, setIsPromoteOpen] = useState(false);
+  const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
 
   const loadData = useCallback(() =>
     Promise.all([
@@ -87,6 +89,7 @@ export default function AcademicDashboard() {
         title="Academic Coordination"
         description="Students, courses, attendance, CT marks and notices."
         actions={<>
+          <Button variant="secondary" icon={CalendarCheck} onClick={() => setIsAttendanceSheetOpen(true)}>Attendance sheet</Button>
           <Button variant="secondary" icon={ArrowUpCircle} onClick={() => setIsPromoteOpen(true)}>Promote students</Button>
           <Button variant="secondary" icon={FileInput} onClick={() => setIsImportOpen(true)}>Import details</Button>
           <Button icon={UserPlus} onClick={() => setStudentModal({})}>Add student</Button>
@@ -169,6 +172,14 @@ export default function AcademicDashboard() {
       )}
       {isPromoteOpen && (
         <PromoteModal students={students} onClose={() => setIsPromoteOpen(false)} onSaved={(msg) => { showMessage(msg); setIsPromoteOpen(false); reload(); }} />
+      )}
+      {isAttendanceSheetOpen && (
+        <AttendanceSheetModal
+          students={students}
+          courses={courses}
+          initialSemester={parseInt(selectedSemester) || 1}
+          onClose={() => setIsAttendanceSheetOpen(false)}
+        />
       )}
       {studentModal && (
         <StudentModal
