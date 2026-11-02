@@ -7,6 +7,7 @@ import UserMenu from '../components/UserMenu';
 import { useSessionUser } from '../../utils/useSessionUser';
 import { ClipboardEdit } from 'lucide-react';
 import { EmptyState } from '../components/ui';
+import GradeCalculatorButton from '../components/GradeCalculator';
 import MarksSheet, { type TeacherCourse } from './_components/MarksSheet';
 
 const savedLabel = (iso: string | null) =>
@@ -35,7 +36,10 @@ export default function TeacherPortal() {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
           <Brand subtitle="Teacher portal" href="/teacher" />
-          <UserMenu logoutTo="/teacher-login" />
+          <div className="flex items-center gap-2">
+            <GradeCalculatorButton size="sm" compact />
+            <UserMenu logoutTo="/teacher-login" />
+          </div>
         </div>
       </header>
 

@@ -16,6 +16,7 @@ import RollSheetModal from './_components/RollSheetModal';
 import LabSheetModal from './_components/LabSheetModal';
 import CaSheetModal from './_components/CaSheetModal';
 import AdmitCardModal from './_components/AdmitCardModal';
+import GradeCalculatorButton from '../../components/GradeCalculator';
 
 type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage' | 'cgpa' | 'credits_earned'>;
 
@@ -108,6 +109,7 @@ export default function ExaminationDashboard() {
           <Button variant="secondary" icon={FlaskConical} onClick={() => setIsLabSheetOpen(true)}>Lab mark sheet</Button>
           <Button variant="secondary" icon={Sheet} onClick={() => setIsCaSheetOpen(true)}>CA mark sheet</Button>
           <Button variant="secondary" icon={IdCard} onClick={() => setIsAdmitOpen(true)}>Admit card distribution</Button>
+          <GradeCalculatorButton />
           <Button icon={GraduationCap} onClick={() => setIsPublishOpen(true)}>Publish Results</Button>
         </>}
       />

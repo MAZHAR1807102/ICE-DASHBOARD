@@ -92,3 +92,18 @@ export function semesterSummaries(results: CourseResult[], official: SemesterRes
 }
 
 export const formatGpa = (value: number) => value.toFixed(2);
+
+// UGC scale by percentage: the lowest percentage that earns each grade, best first.
+export const GRADE_BANDS: { grade: string; from: number }[] = [
+  { grade: 'A+', from: 80 }, { grade: 'A', from: 75 }, { grade: 'A-', from: 70 }, { grade: 'B+', from: 65 },
+  { grade: 'B', from: 60 }, { grade: 'B-', from: 55 }, { grade: 'C+', from: 50 }, { grade: 'C', from: 45 },
+  { grade: 'D', from: 40 }, { grade: 'F', from: 0 },
+];
+
+// Grade and grade point for marks out of a total (e.g. 21 of 25 → 84% → A+, 4.00).
+export function gradeForMarks(marks: number, outOf: number) {
+  const percent = (marks / outOf) * 100;
+  // Compare marks rather than the percentage so 18.75 of 25 is exactly 75% (no floating-point slip).
+  const band = GRADE_BANDS.find((b) => marks * 100 >= b.from * outOf - 1e-9) ?? GRADE_BANDS[GRADE_BANDS.length - 1];
+  return { percent, grade: band.grade, point: GRADE_POINTS[band.grade] };
+}
