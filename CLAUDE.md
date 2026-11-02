@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-01 (admit card distribution sheet deployed; read-only walkthrough of the live site — no errors)
+Last updated: 2026-11-02 (grade calculator built on branch `grade-calculator`, not deployed yet)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -60,6 +60,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Admit card distribution (`utils/admit-card.ts`): same examinees as the roll sheet (`buildRollEntries`);
   Word, A4 portrait, Arial (their sample was a Helvetica PDF); exam title from course codes, not the
   semester number; Regular / Readd / Backlog tables, continuous SL; letterhead + Code No- 385 each page.
+- Grade from marks: UGC bands by percentage (`GRADE_BANDS`/`gradeForMarks` in `utils/grades.ts`):
+  80 A+ 4.00, 75 A, 70 A-, 65 B+, 60 B, 55 B-, 50 C+, 45 C, 40 D 2.00, below 40 F. Out of 25: A+ from 20.
 - Promotion: suggest hold-back only when RU result says fail; held back = stays (becomes Readd);
   semester 8 → graduated (Alumni; Finance keeps them while owing); move resets attendance,
   eligibility override, exam registration.
@@ -83,10 +85,12 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - zsh: an unmatched glob aborts a `&&` chain; puppeteer's Chrome must be reinstalled after updates.
 - Quick Look shows neither Word page breaks nor merged cells — check in Word.
 - The user's own Word files often have no real page breaks (empty lines) — use pageBreakBefore.
+- A modal opened inside the blurred sticky header (backdrop-blur) is trapped in it — portal it to body.
 - Course codes in `courses` can have trailing spaces — normalise before matching.
 
 ## Next steps / open questions
-- (none pending deploy)
+- Pending deploy: branch `grade-calculator` (no migration) — Exams page + teacher portal button;
+  marks (out of 25 by default) → UGC grade/point, mark-range table, paste many marks.
 - Data gaps seen 2026-11-01 (not bugs): attendance entered only for semester 4, so most students
   show 0% and "Exam blocked"; advisors set for 1 of 147 students.
 - Possible polish: on phones the roster's "View as student" button squeezes the name column, and
