@@ -145,3 +145,33 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
   });
   return Packer.toBlob(doc);
 }
+
+// ---------- Filling marks without portal data (Exams → Custom CA sheet) ----------
+
+// Small seeded random generator, so the same seed always gives the same sheet.
+export function seededRandom(seed: number) {
+  let x = Math.floor(seed) % 2147483647 || 1;
+  return () => ((x = (x * 48271) % 2147483647) / 2147483647);
+}
+
+// Highest CA total (CT average + attendance) of a course.
+export const caTotalMax = (credit: number) => caMarks(credit).ct + caMarks(credit).attendance;
+
+// One student's row with full attendance and a CA total picked at random from `totals` (totals
+// out of range are ignored): CTs near the top of the range that average exactly to the CT mark
+// needed, so the sheet checks out without rounding. A blank row when no total fits.
+export function filledRow(roll: string, credit: number, totals: number[], rand: () => number): CaRow {
+  const m = caMarks(credit);
+  const n = ctCount({ credit });
+  const usable = totals.filter((t) => t >= m.attendance && t <= m.ct + m.attendance && Number.isInteger((t - m.attendance) * 2));
+  if (!usable.length) return { roll, cts: Array(n).fill(null), ctAverage: null, attendance: null, total: null };
+  const ct = usable[Math.floor(rand() * usable.length)] - m.attendance;
+  const max = ctMax({ credit });
+  const choices = Array.from({ length: 7 }, (_, i) => max - i * 0.5).filter((v) => v >= 0);
+  const full: AttendanceRule = { mode: 'full', bands: [] };
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const cts = Array.from({ length: n }, () => choices[Math.floor(rand() * choices.length)]);
+    if (Math.abs(cts.reduce((sum, c) => sum + c, 0) - ct * n) < 1e-9) return caRow({ roll, cts, attendancePercent: null }, credit, full);
+  }
+  return caRow({ roll, cts: Array(n).fill(ct), attendancePercent: null }, credit, full);
+}
