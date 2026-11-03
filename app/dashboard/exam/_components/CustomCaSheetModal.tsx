@@ -9,7 +9,7 @@ import { supabase } from '../../../../utils/supabase';
 import { classifyCohorts, orderByCohort } from '../../../../utils/cohort';
 import { isTheoryCode, semesterTitle } from '../../../../utils/rollsheet';
 import { ctCount } from '../../../../utils/ct';
-import { caMarks, caTotalMax, filledRow, fmt, seededRandom, yearSemesterLine, type CaCourse, type CaRow } from '../../../../utils/ca-sheet';
+import { caMarks, caTotalMax, filledRow, fmt, seededRandom, showsEachCt, yearSemesterLine, type CaCourse, type CaRow } from '../../../../utils/ca-sheet';
 import { SEMESTERS, isRunning, type Course, type Student } from '../../../../utils/types';
 
 type Person = Pick<Student, 'id' | 'name' | 'ru_id' | 'college_id' | 'semester'>;
@@ -218,7 +218,8 @@ export default function CustomCaSheetModal({ onClose }: { onClose: () => void })
 
         {shown.map((p) => {
           const m = caMarks(p.credit);
-          const n = ctCount({ credit: p.credit });
+          const each = showsEachCt(p.course.code, semester);
+          const n = each ? ctCount({ credit: p.credit }) : 0;
           return (
             <div key={p.key} className="rounded-xl ring-1 ring-indigo-200">
               <p className="border-b border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs font-semibold text-indigo-900">
@@ -230,7 +231,7 @@ export default function CustomCaSheetModal({ onClose }: { onClose: () => void })
                     <tr>
                       <th className="px-3 py-1.5">Roll</th>
                       {Array.from({ length: n }, (_, i) => <th key={i} className="px-2 py-1.5 text-center">CT-{i + 1}</th>)}
-                      <th className="px-2 py-1.5 text-center">CT avg</th>
+                      <th className="px-2 py-1.5 text-center">{each ? 'CT avg' : 'Class Test'}</th>
                       <th className="px-2 py-1.5 text-center">Attendance</th>
                       <th className="px-2 py-1.5 text-center">Total</th>
                     </tr>
@@ -239,7 +240,7 @@ export default function CustomCaSheetModal({ onClose }: { onClose: () => void })
                     {p.rows.map((r) => (
                       <tr key={r.roll}>
                         <td className="px-3 py-1 font-mono text-xs">{r.roll}</td>
-                        {r.cts.map((c, i) => <td key={i} className="px-2 py-1 text-center tabular-nums">{fmt(c) || '—'}</td>)}
+                        {r.cts.slice(0, n).map((c, i) => <td key={i} className="px-2 py-1 text-center tabular-nums">{fmt(c) || '—'}</td>)}
                         <td className="px-2 py-1 text-center tabular-nums">{fmt(r.ctAverage) || '—'}</td>
                         <td className="px-2 py-1 text-center tabular-nums">{fmt(r.attendance) || '—'}</td>
                         <td className="px-2 py-1 text-center font-semibold tabular-nums">{fmt(r.total) || '—'}</td>
