@@ -48,6 +48,13 @@ export function yearSemesterLine(courseCode: string, fallbackSemester: number) {
   return `${ORDINAL_WORD[Math.ceil(fallbackSemester / 2) - 1]} Year ${ORDINAL_WORD[(fallbackSemester - 1) % 2]} Semester`;
 }
 
+// Only first-year sheets list every class test (CT-1…n) before the CT average; later years have a
+// single Class Test column holding the CT mark. The year comes from the RU course code.
+export function showsEachCt(courseCode: string, fallbackSemester: number) {
+  const year = Number(courseCode.replace(/\D/g, '')[0]);
+  return (year >= 1 && year <= 4 ? year : Math.ceil(fallbackSemester / 2)) === 1;
+}
+
 export type CaCourse = { course_code: string; title: string; credit: number; semester: number; rows: CaRow[]; teacher?: string };
 export type CaSheetOptions = { department: string; examYear: string; courses: CaCourse[]; rowsPerPage?: number; date?: string };
 
@@ -80,7 +87,8 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
   parts.forEach((course, index) => {
     const m = caMarks(course.credit);
-    const n = ctCount({ credit: course.credit });
+    const tests = ctCount({ credit: course.credit });
+    const n = showsEachCt(course.course_code, course.semester) ? tests : 0; // CT columns before the CT mark
     const max = ctMax({ credit: course.credit });
     const right = [{ type: TabStopType.RIGHT, position: WIDTH }];
 
@@ -88,7 +96,7 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
       new Paragraph({ alignment: AlignmentType.CENTER, pageBreakBefore: index > 0, border: { bottom: line }, children: [run('Mark Sheet', { bold: true, size: 24 })] }),
       new Paragraph({ children: [run(`${opts.department} Exam Year: ${opts.examYear}`)] }),
       new Paragraph({ children: [run(`B.Sc. Engg. ${yearSemesterLine(course.course_code, course.semester)}`)] }),
-      new Paragraph({ tabStops: right, children: [run(`Course Code: ${course.course_code}`), run(`\tNo. of Class Test: ${String(n).padStart(2, '0')}`)] }),
+      new Paragraph({ tabStops: right, children: [run(`Course Code: ${course.course_code}`), run(`\tNo. of Class Test: ${String(tests).padStart(2, '0')}`)] }),
       new Paragraph({ tabStops: right, spacing: { after: 200 }, children: [run(`Course Title: ${course.title}`), run(`\tCredits: ${course.credit.toFixed(1)}`)] }),
     );
 
@@ -108,11 +116,11 @@ export async function buildCaSheetDocx(opts: CaSheetOptions): Promise<Blob> {
     }));
     children.push(new Paragraph({ spacing: { after: 280 }, children: [] }));
 
-    // Students: Roll · Theory (blank) · CT-1…n · CT (avg) · Attendance · Total
+    // Students: Roll · Theory (blank) · [CT-1…n · CT (avg) | Class Test] · Attendance · Total
     const ctW = n === 4 ? 920 : 1080;
-    const widths = [1700, 1000, ...Array(n).fill(ctW), 1060, 1100];
+    const widths = n ? [1700, 1000, ...Array(n).fill(ctW), 1060, 1100] : [1900, 2000, 1700, 1700];
     widths.push(WIDTH - widths.reduce((a, b) => a + b, 0));
-    const head = ['Roll No', 'Theory', ...Array.from({ length: n }, (_, i) => `CT - ${i + 1}\n(${fmt(max)})`), `CT (avg)\n(${fmt(m.ct)})`, `Attendance\n(${fmt(m.attendance)})`, `Total\n(${fmt(m.ct + m.attendance)})`];
+    const head = ['Roll No', 'Theory', ...Array.from({ length: n }, (_, i) => `CT - ${i + 1}\n(${fmt(max)})`), n ? `CT (avg)\n(${fmt(m.ct)})` : `Class Test\n(${fmt(m.ct)})`, `Attendance\n(${fmt(m.attendance)})`, `Total\n(${fmt(m.ct + m.attendance)})`];
     children.push(new Table({
       width: { size: WIDTH, type: WidthType.DXA },
       columnWidths: widths,
