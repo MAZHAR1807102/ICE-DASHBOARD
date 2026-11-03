@@ -54,6 +54,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - CA sheet: 25 per credit; Attendance 10%, CT 20%, Theory 70%; 2-credit 3 CTs (out of 10),
   3-credit 4 CTs (out of 15); CT avg = mean to nearest 0.5; 18 students a page, heading + signature
   (teacher name from the course list) on every page.
+  Only first-year courses (code CSE1xxx…) list CT-1…n + CT (avg); 2nd–4th year sheets have one
+  "Class Test" column with the CT mark (`showsEachCt` in `utils/ca-sheet.ts`, both CA buttons).
 - Attendance sheet (`utils/attendance-sheet.ts`): copies the department's own sheet, which is in
   **Cambria** (not Times New Roman), A4 landscape; one sheet per running course of the semester;
   semester's students Regular then Readd by roll; 20 day boxes + P/A/%; 26 students a page.
