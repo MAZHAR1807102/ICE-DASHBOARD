@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-03 (Custom CA sheet built on branch `custom-ca-sheet`, on top of `grade-calculator`; not deployed)
+Last updated: 2026-11-03 (grade calculator + Custom CA sheet + first-year-only CT columns deployed)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -18,6 +18,11 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
   grouping, roll sheets (Word) + Bangla/Bijoy import, admit-card lists, view-as-student,
   lab mark sheet, CA mark sheet, promotion + alumni, ending courses, teachers list (migrations 001–013 applied),
   attendance sheet (Academic header button), admit card distribution sheet (Exam page button); no migrations.
+- Deployed 2026-11-03 (no migrations): Grade calculator (Exam page + teacher portal; marks → UGC grade),
+  Exams → "Custom CA sheet" (courses typed/loaded, rolls pasted/loaded, marks blank or full attendance +
+  random CA totals from given values for 3 credits scaled to 2/4, CTs average exactly; standard
+  70/20/10 format only — user said not to build the older 60/10/5 format in), CA sheets list each CT
+  only for first-year courses.
 - Teachers list + Assign teachers (migration 013) deployed 2026-10-26.
 - Not built: advisor portal (user said leave it), password cleanup (user chose to keep default
   student password; don't raise it).
@@ -93,13 +98,6 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Course codes in `courses` can have trailing spaces — normalise before matching.
 
 ## Next steps / open questions
-- Pending deploy: branch `grade-calculator` (no migration) — Exams page + teacher portal button;
-  marks (out of 25 by default) → UGC grade/point, mark-range table, paste many marks.
-- Pending deploy: branch `custom-ca-sheet` (contains `grade-calculator`; no migration) — Exams →
-  "Custom CA sheet": courses typed or loaded, rolls pasted or loaded, marks blank or filled
-  (full attendance + CA totals picked at random from given values for 3 credits, scaled to 2/4;
-  CTs average exactly, seeded so "Shuffle again" changes them). Standard 70/20/10 format only —
-  the user said not to build the older 60/10/5 format into the site.
 - Data gaps seen 2026-11-01 (not bugs): attendance entered only for semester 4, so most students
   show 0% and "Exam blocked"; advisors set for 1 of 147 students.
 - Possible polish: on phones the roster's "View as student" button squeezes the name column, and
