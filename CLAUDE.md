@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-02 (grade calculator built on branch `grade-calculator`, not deployed yet)
+Last updated: 2026-11-03 (Custom CA sheet built on branch `custom-ca-sheet`, on top of `grade-calculator`; not deployed)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -60,6 +60,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Admit card distribution (`utils/admit-card.ts`): same examinees as the roll sheet (`buildRollEntries`);
   Word, A4 portrait, Arial (their sample was a Helvetica PDF); exam title from course codes, not the
   semester number; Regular / Readd / Backlog tables, continuous SL; letterhead + Code No- 385 each page.
+- Older syllabus CA format (used by hand for 3-2 exam 2024, rolls 21…/22…): Theory 60, one CT
+  column 10, Attendance 5 for 3 credits. Not in the site (user's decision).
 - Grade from marks: UGC bands by percentage (`GRADE_BANDS`/`gradeForMarks` in `utils/grades.ts`):
   80 A+ 4.00, 75 A, 70 A-, 65 B+, 60 B, 55 B-, 50 C+, 45 C, 40 D 2.00, below 40 F. Out of 25: A+ from 20.
 - Promotion: suggest hold-back only when RU result says fail; held back = stays (becomes Readd);
@@ -91,6 +93,11 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 ## Next steps / open questions
 - Pending deploy: branch `grade-calculator` (no migration) — Exams page + teacher portal button;
   marks (out of 25 by default) → UGC grade/point, mark-range table, paste many marks.
+- Pending deploy: branch `custom-ca-sheet` (contains `grade-calculator`; no migration) — Exams →
+  "Custom CA sheet": courses typed or loaded, rolls pasted or loaded, marks blank or filled
+  (full attendance + CA totals picked at random from given values for 3 credits, scaled to 2/4;
+  CTs average exactly, seeded so "Shuffle again" changes them). Standard 70/20/10 format only —
+  the user said not to build the older 60/10/5 format into the site.
 - Data gaps seen 2026-11-01 (not bugs): attendance entered only for semester 4, so most students
   show 0% and "Exam blocked"; advisors set for 1 of 147 students.
 - Possible polish: on phones the roster's "View as student" button squeezes the name column, and
