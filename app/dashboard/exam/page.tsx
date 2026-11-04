@@ -2,11 +2,13 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { classifyCohorts, groupHeadings, matchesCohort, orderByCohort, type CohortFilter } from '../../../utils/cohort';
-import { Ban, CheckCircle2, Clock, FileBadge, FileStack, FlaskConical, GraduationCap, History, IdCard, ScanSearch, ScrollText, Search, Sheet, Shuffle, Users } from 'lucide-react';
+import { Ban, Calculator, CalendarCheck, CheckCircle2, Clock, FileBadge, FileStack, FlaskConical, FolderOpen, GraduationCap, History, IdCard, NotebookTabs, ScanSearch, ScrollText, Search, Sheet, Users } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
-import { DEGREE_CREDITS, SEMESTERS, type Student } from '../../../utils/types';
-import { Badge, Button, Card, CohortSelect, EmptyState, GroupHeading, PageHeader, ReaddBadge, StatCard, inputClass, table } from '../../components/ui';
+import { DEGREE_CREDITS, type Student } from '../../../utils/types';
+import { Badge, Button, Card, CohortSelect, EmptyState, GroupHeading, PageHeader, ReaddBadge, SemesterChips, StatCard, inputClass, table } from '../../components/ui';
+import MenuButton from '../../components/MenuButton';
+import { useStoredState } from '../../../utils/useStoredState';
 import { useConfirm, useToast } from '../../components/Providers';
 import PublishResultsModal from './_components/PublishResultsModal';
 import StartingCgpaModal from './_components/StartingCgpaModal';
@@ -17,7 +19,9 @@ import LabSheetModal from './_components/LabSheetModal';
 import CaSheetModal from './_components/CaSheetModal';
 import CustomCaSheetModal from './_components/CustomCaSheetModal';
 import AdmitCardModal from './_components/AdmitCardModal';
-import GradeCalculatorButton from '../../components/GradeCalculator';
+import { GradeCalculatorModal } from '../../components/GradeCalculator';
+import TopSheetModal from './_components/TopSheetModal';
+import ExamAttendanceSheet from './_components/ExamAttendanceSheet';
 
 type ExamStudent = Pick<Student, 'id' | 'college_id' | 'ru_id' | 'name' | 'semester' | 'exam_reg_status' | 'backlogs' | 'internal_marks_status' | 'attendance_percentage' | 'cgpa' | 'credits_earned'>;
 
@@ -27,9 +31,9 @@ export default function ExaminationDashboard() {
   const toast = useToast();
   const confirm = useConfirm();
   const [students, setStudents] = useState<ExamStudent[]>([]);
-  const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedSemester, setSelectedSemester] = useStoredState<string>('exam.semester', 'All');
   const [search, setSearch] = useState('');
-  const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
+  const [cohortFilter, setCohortFilter] = useStoredState<CohortFilter>('exam.cohort', 'all', ['all', 'regular', 'readd']);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
@@ -41,6 +45,9 @@ export default function ExaminationDashboard() {
   const [isCaSheetOpen, setIsCaSheetOpen] = useState(false);
   const [isCustomCaOpen, setIsCustomCaOpen] = useState(false);
   const [isAdmitOpen, setIsAdmitOpen] = useState(false);
+  const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
+  const [isTopSheetOpen, setIsTopSheetOpen] = useState(false);
+  const [isGradeOpen, setIsGradeOpen] = useState(false);
 
   const fetchExamData = useCallback(() =>
     supabase
@@ -88,6 +95,7 @@ export default function ExaminationDashboard() {
     }
   };
 
+  const closeAttendance = useCallback(() => setIsAttendanceOpen(false), []);
   const query = search.toLowerCase();
   const cohorts = useMemo(() => classifyCohorts(students), [students]);
   const displayedStudents = orderByCohort(students.filter((s) =>
@@ -96,6 +104,7 @@ export default function ExaminationDashboard() {
     (!query || s.name.toLowerCase().includes(query) || s.college_id.includes(search) || (s.ru_id ?? '').includes(search)),
   ), cohorts);
   const headings = groupHeadings(displayedStudents, cohorts, selectedSemester === 'All');
+  const semesterCounts = students.reduce<Record<number, number>>((m, s) => ({ ...m, [s.semester]: (m[s.semester] ?? 0) + 1 }), {});
   const countBy = (status: string) => displayedStudents.filter((s) => (s.exam_reg_status || 'Pending') === status).length;
 
   return (
@@ -105,14 +114,20 @@ export default function ExaminationDashboard() {
         description="Registration status, eligibility and semester results."
         actions={<>
           <Button variant="secondary" icon={ScanSearch} loading={isChecking} onClick={handleCheckEligibility}>Auto-check eligibility</Button>
-          <Button variant="secondary" icon={History} onClick={() => setIsStartingOpen(true)}>Earlier results</Button>
-          <Button variant="secondary" icon={FileStack} onClick={() => setIsPublishedOpen(true)}>Published results</Button>
-          <Button variant="secondary" icon={ScrollText} onClick={() => setIsRollSheetOpen(true)}>Roll sheet</Button>
-          <Button variant="secondary" icon={FlaskConical} onClick={() => setIsLabSheetOpen(true)}>Lab mark sheet</Button>
-          <Button variant="secondary" icon={Sheet} onClick={() => setIsCaSheetOpen(true)}>CA mark sheet</Button>
-          <Button variant="secondary" icon={Shuffle} onClick={() => setIsCustomCaOpen(true)}>Custom CA sheet</Button>
-          <Button variant="secondary" icon={IdCard} onClick={() => setIsAdmitOpen(true)}>Admit card distribution</Button>
-          <GradeCalculatorButton />
+          <MenuButton label="Results" icon={FileStack} items={[
+            { label: 'Published results', hint: 'RU sheets already imported; edit or remove', icon: FileStack, onClick: () => setIsPublishedOpen(true) },
+            { label: 'Earlier results', hint: 'Starting CGPA for semesters never uploaded', icon: History, onClick: () => setIsStartingOpen(true) },
+          ]} />
+          <MenuButton label="Documents" icon={FolderOpen} items={[
+            { label: 'Roll sheet', hint: 'Examinees of a semester, with subjects', icon: ScrollText, onClick: () => setIsRollSheetOpen(true) },
+            { label: 'Admit card distribution', hint: 'Signature list for collecting admit cards', icon: IdCard, onClick: () => setIsAdmitOpen(true) },
+            { label: 'Attendance sheet', hint: 'Class attendance sheet per course', icon: CalendarCheck, onClick: () => setIsAttendanceOpen(true) },
+            { label: 'Lab mark sheet', hint: 'Experiment · CT · AT per lab course', icon: FlaskConical, onClick: () => setIsLabSheetOpen(true) },
+            { label: 'CA mark sheet', hint: 'CTs, attendance and CA total per theory course', icon: Sheet, onClick: () => setIsCaSheetOpen(true) },
+            { label: 'Custom CA sheet — courses or rolls not in the portal', indent: true, onClick: () => setIsCustomCaOpen(true) },
+            { label: 'Top sheet', hint: 'Cover pages for the Lab / CA bundles sent to RU', icon: NotebookTabs, onClick: () => setIsTopSheetOpen(true) },
+            { label: 'Grade calculator', hint: 'Marks → grade and grade point', icon: Calculator, onClick: () => setIsGradeOpen(true) },
+          ]} />
           <Button icon={GraduationCap} onClick={() => setIsPublishOpen(true)}>Publish Results</Button>
         </>}
       />
@@ -136,12 +151,9 @@ export default function ExaminationDashboard() {
               <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID" className={`${inputClass} pl-9`} />
             </div>
             <CohortSelect value={cohortFilter} onChange={setCohortFilter} className="sm:w-44" />
-            <select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={`${inputClass} sm:w-40`} aria-label="Semester">
-              <option value="All">All semesters</option>
-              {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
-            </select>
           </div>
         </div>
+        <SemesterChips value={selectedSemester} onChange={setSelectedSemester} counts={semesterCounts} className="border-b border-slate-100 px-4 py-3" />
 
         {displayedStudents.length === 0 ? (
           <EmptyState icon={FileBadge} title="No students found" />
@@ -207,9 +219,12 @@ export default function ExaminationDashboard() {
 
       {isRollSheetOpen && <RollSheetModal onClose={() => setIsRollSheetOpen(false)} />}
       {isLabSheetOpen && <LabSheetModal onClose={() => setIsLabSheetOpen(false)} />}
-      {isCaSheetOpen && <CaSheetModal onClose={() => setIsCaSheetOpen(false)} />}
+      {isCaSheetOpen && <CaSheetModal onClose={() => setIsCaSheetOpen(false)} onCustom={() => { setIsCaSheetOpen(false); setIsCustomCaOpen(true); }} />}
       {isCustomCaOpen && <CustomCaSheetModal onClose={() => setIsCustomCaOpen(false)} />}
       {isAdmitOpen && <AdmitCardModal onClose={() => setIsAdmitOpen(false)} />}
+      {isAttendanceOpen && <ExamAttendanceSheet initialSemester={selectedSemester === 'All' ? 1 : Number(selectedSemester)} onClose={closeAttendance} />}
+      {isTopSheetOpen && <TopSheetModal onClose={() => setIsTopSheetOpen(false)} />}
+      {isGradeOpen && <GradeCalculatorModal onClose={() => setIsGradeOpen(false)} />}
       {resultsFor && <StudentResultsModal student={resultsFor} onClose={() => setResultsFor(null)} onChanged={fetchExamData} />}
       {isPublishedOpen && <PublishedResultsModal onClose={() => setIsPublishedOpen(false)} onChanged={fetchExamData} />}
       {isStartingOpen && <StartingCgpaModal students={students} onClose={() => setIsStartingOpen(false)} onSaved={fetchExamData} />}

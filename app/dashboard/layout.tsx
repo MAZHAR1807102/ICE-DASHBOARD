@@ -11,12 +11,13 @@ import { DASHBOARD_ACCESS } from '../../utils/auth';
 // Access to /dashboard/* is checked on the server in proxy.ts before this renders,
 // and every query is filtered by the database's Row Level Security policies.
 
-const NAV = [
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; soon?: boolean }[] = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/studAff', label: 'Finance', icon: Wallet },
   { href: '/dashboard/academic', label: 'Academic', icon: BookOpenCheck },
   { href: '/dashboard/exam', label: 'Exams', icon: ClipboardCheck },
-  { href: '/dashboard/advisor', label: 'Advisory', icon: UsersRound },
+  // Not built yet (sample data only) — marked so nobody takes it for live records.
+  { href: '/dashboard/advisor', label: 'Advisory', icon: UsersRound, soon: true },
   { href: '/dashboard/alumni', label: 'Alumni', icon: GraduationCap },
 ];
 
@@ -31,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
   const isActive = (href: string) => (href === '/dashboard' ? pathname === href : pathname.startsWith(href));
 
-  const nav = links.map(({ href, label, icon: Icon }) => (
+  const nav = links.map(({ href, label, icon: Icon, soon }) => (
     <Link
       key={href}
       href={href}
@@ -39,6 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     >
       <Icon className="size-4" aria-hidden />
       {label}
+      {soon && <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-800">Soon</span>}
     </Link>
   ));
 
