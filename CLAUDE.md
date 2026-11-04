@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-04 (branch `organize` built: student status, Exam menus, semester chips, Top sheet, Advisory Soon; not deployed)
+Last updated: 2026-11-04 (organize changes deployed: student status, Exam menus, semester chips, Top sheet, Advisory Soon)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -100,7 +100,7 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Course codes in `courses` can have trailing spaces — normalise before matching.
 
 ## Next steps / open questions
-- Pending deploy: branch `organize` (no migration) —
+- Deployed 2026-11-04 (no migration, verified on the live site): the `organize` changes —
   1. Student portal: no attendance recorded + no dues → "Attendance not recorded yet" / "Waiting for
      attendance" instead of "Exam blocked" (`studentExamStatus` in `utils/eligibility.ts`; the exam
      office's own check and stored statuses are unchanged).
