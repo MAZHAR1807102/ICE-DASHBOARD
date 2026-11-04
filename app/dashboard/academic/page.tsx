@@ -5,7 +5,8 @@ import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from
 import { ArrowUpCircle, BookOpen, CalendarCheck, ClipboardList, GraduationCap, FileInput, Megaphone, UserPlus, UsersRound } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { SEMESTERS, isActive, isRunning, type Course, type CtMark, type Notice, type Student, type Teacher } from '../../../utils/types';
-import { Button, Card, CohortSelect, PageHeader, Tabs, inputClass } from '../../components/ui';
+import { Button, Card, CohortSelect, PageHeader, SemesterChips, Tabs, inputClass } from '../../components/ui';
+import { useStoredState } from '../../../utils/useStoredState';
 import { useToast } from '../../components/Providers';
 import RosterTab from './_components/RosterTab';
 import CtMarksTab from './_components/CtMarksTab';
@@ -29,13 +30,17 @@ export default function AcademicDashboard() {
   const [version, setVersion] = useState(0); // bumps on every reload so tabs reset their unsaved edits
 
   const [activeTab, setActiveTab] = useState<Tab>('roster');
-  const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedSemester, setSelectedSemesterRaw] = useStoredState<string>('academic.semester', 'All');
   const [selectedCourseCode, setSelectedCourseCode] = useState('');
-  const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
+  const [cohortFilter, setCohortFilter] = useStoredState<CohortFilter>('academic.cohort', 'all', ['all', 'regular', 'readd']);
   const [studentModal, setStudentModal] = useState<{ student?: Student } | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isPromoteOpen, setIsPromoteOpen] = useState(false);
   const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
+
+  // A new semester means a new course list, so the chosen course is cleared.
+  const setSelectedSemester = (value: string) => { setSelectedSemesterRaw(value); setSelectedCourseCode(''); };
+  const semesterCounts = students.reduce<Record<number, number>>((m, s) => ({ ...m, [s.semester]: (m[s.semester] ?? 0) + 1 }), {});
 
   const loadData = useCallback(() =>
     Promise.all([
@@ -109,15 +114,6 @@ export default function AcademicDashboard() {
           ]}
         />
         <div className="flex flex-col gap-2 sm:flex-row">
-          <select
-            value={selectedSemester}
-            onChange={(e) => { setSelectedSemester(e.target.value); setSelectedCourseCode(''); }}
-            className={`${inputClass} sm:w-44`}
-            aria-label="Semester"
-          >
-            <option value="All">All semesters</option>
-            {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
-          </select>
           {needsCourse && <CohortSelect value={cohortFilter} onChange={setCohortFilter} className="sm:w-44" />}
           {needsCourse && (
             <select
@@ -133,6 +129,10 @@ export default function AcademicDashboard() {
           )}
         </div>
       </div>
+
+      {activeTab !== 'teachers' && activeTab !== 'notices' && (
+        <SemesterChips value={selectedSemester} onChange={setSelectedSemester} counts={semesterCounts} always={activeTab === 'curriculum' ? [...SEMESTERS] : undefined} className="mb-4" />
+      )}
 
       <Card className="overflow-hidden">
         {activeTab === 'roster' && (

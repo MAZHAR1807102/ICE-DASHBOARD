@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-03 (grade calculator + Custom CA sheet + first-year-only CT columns deployed)
+Last updated: 2026-11-04 (branch `organize` built: student status, Exam menus, semester chips, Top sheet, Advisory Soon; not deployed)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -95,11 +95,29 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - Quick Look shows neither Word page breaks nor merged cells — check in Word.
 - The user's own Word files often have no real page breaks (empty lines) — use pageBreakBefore.
 - A modal opened inside the blurred sticky header (backdrop-blur) is trapped in it — portal it to body.
+- `master_students.advisor` is NOT NULL: the Add student form fails if Advisor is left empty
+  (insert `''`, as the existing rows have).
 - Course codes in `courses` can have trailing spaces — normalise before matching.
 
 ## Next steps / open questions
+- Pending deploy: branch `organize` (no migration) —
+  1. Student portal: no attendance recorded + no dues → "Attendance not recorded yet" / "Waiting for
+     attendance" instead of "Exam blocked" (`studentExamStatus` in `utils/eligibility.ts`; the exam
+     office's own check and stored statuses are unchanged).
+  2. Exams header = Auto-check · Results ▾ (published, earlier) · Documents ▾ (roll, admit cards,
+     attendance, lab, CA [+ custom], top sheet, grade calculator) · Publish. `app/components/MenuButton.tsx`.
+  3. Semester chips with counts on Exams, Finance, Academic (Curriculum shows all 8); semester and
+     Regular/Readd choice remembered per browser (`utils/useStoredState.ts`, keys exam./finance./academic.).
+  4. Top sheet generator (`utils/top-sheet.ts`, Exams → Documents → Top sheet): page per bundle
+     (Lab Mark / CA), upper copy From college → To Chairman (+ exam title), lower copy → Exam Controller;
+     codes prefilled from Curriculum by code digits; 0.75" side margins so lines don't wrap.
+  5. Advisory menu item marked "Soon" (page itself untouched).
+- 2026-11-04: student records updated from the user's edited list (`~/Downloads/Student_list.docx`):
+  9 missing semester-1 names filled, one college roll corrected, 3 students added (2 to sem 1,
+  1 to sem 6, Readd) with student logins (default password); one more sem-1 Readd student added
+  with a **temporary College Roll 24000** (real roll not known yet — replace it when the user has it).
+  Placeholder-style rolls 19000/24000 are temporary. Now 151 students.
 - Data gaps seen 2026-11-01 (not bugs): attendance entered only for semester 4, so most students
   show 0% and "Exam blocked"; advisors set for 1 of 147 students.
-- Possible polish: on phones the roster's "View as student" button squeezes the name column, and
-  roster/exam/finance lists are very long (no per-semester collapse).
+- Possible polish: on phones the roster's "View as student" button squeezes the name column.
 - Attendance-mark bands for the CA sheet are an assumption (90%→full … <60%→0); confirm with RU rule.
