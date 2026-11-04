@@ -5,8 +5,9 @@ import { classifyCohorts, matchesCohort, orderByCohort, type CohortFilter } from
 import { AlertTriangle, BadgeCheck, CalendarRange, GraduationCap, Landmark, Search, Wallet } from 'lucide-react';
 import { supabase } from '../../../utils/supabase';
 import { MIN_ATTENDANCE_PERCENT } from '../../../utils/eligibility';
-import { SEMESTERS, isActive, totalDue, type Student } from '../../../utils/types';
-import { Button, Card, CohortSelect, PageHeader, StatCard, inputClass, taka } from '../../components/ui';
+import { isActive, totalDue, type Student } from '../../../utils/types';
+import { Button, Card, CohortSelect, PageHeader, SemesterChips, StatCard, inputClass, taka } from '../../components/ui';
+import { useStoredState } from '../../../utils/useStoredState';
 import { useConfirm, useToast } from '../../components/Providers';
 import LedgerTable from './_components/LedgerTable';
 import PaymentModal from './_components/PaymentModal';
@@ -24,8 +25,8 @@ export default function StudentAffairsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [semesterFilter, setSemesterFilter] = useState('All');
-  const [cohortFilter, setCohortFilter] = useState<CohortFilter>('all');
+  const [semesterFilter, setSemesterFilter] = useStoredState<string>('finance.semester', 'All');
+  const [cohortFilter, setCohortFilter] = useStoredState<CohortFilter>('finance.cohort', 'all', ['all', 'regular', 'readd']);
   const [modal, setModal] = useState<{ type: 'payment' | 'dues' | 'history'; student: Student } | null>(null);
 
   const fetchStudents = useCallback(() =>
@@ -73,6 +74,7 @@ export default function StudentAffairsPage() {
   };
 
   const scope = semesterFilter === 'All' ? 'all semesters' : `semester ${semesterFilter}`;
+  const semesterCounts = students.reduce<Record<number, number>>((m, s) => ({ ...m, [s.semester]: (m[s.semester] ?? 0) + 1 }), {});
 
   // --- MASS ACTIONS (each is one all-or-nothing database call) ---
   const handleMassBill = async (billType: BillType) => {
@@ -148,10 +150,6 @@ export default function StudentAffairsPage() {
               <input type="search" placeholder="Search name, College ID or RU ID" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`${inputClass} pl-9`} />
             </div>
             <CohortSelect value={cohortFilter} onChange={setCohortFilter} className="sm:w-44" />
-            <select value={semesterFilter} onChange={(e) => setSemesterFilter(e.target.value)} className={`${inputClass} sm:w-44`} aria-label="Semester">
-              <option value="All">All semesters</option>
-              {SEMESTERS.map((n) => <option key={n} value={n}>Semester {n}</option>)}
-            </select>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -162,6 +160,8 @@ export default function StudentAffairsPage() {
             <Button size="sm" variant="danger" icon={AlertTriangle} loading={busy === 'fine'} onClick={handleAttendanceFines}>Fine &lt;{MIN_ATTENDANCE_PERCENT}% attendance</Button>
           </div>
         </div>
+
+        <SemesterChips value={semesterFilter} onChange={setSemesterFilter} counts={semesterCounts} className="border-b border-slate-100 px-4 py-3" />
 
         {loading ? (
           <div className="p-12 text-center text-sm text-slate-500">Loading accounts…</div>

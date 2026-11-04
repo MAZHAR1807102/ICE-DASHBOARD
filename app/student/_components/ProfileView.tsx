@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MIN_ATTENDANCE_PERCENT, isExamEligible } from '../../../utils/eligibility';
+import { MIN_ATTENDANCE_PERCENT, attendanceRecorded, studentExamStatus } from '../../../utils/eligibility';
 import { academicStanding } from '../../../utils/grades';
 import { DEGREE_CREDITS, isActive, totalDue } from '../../../utils/types';
 import type { Profile } from '../../../utils/profile';
@@ -39,7 +39,8 @@ export default function ProfileView({ profile }: { profile: Profile }) {
   const hasStanding = standing.creditsCounted > 0;
   const due = totalDue(student);
   const attendance = student.attendance_percentage || 0;
-  const eligible = isExamEligible({ ...student, total_due: due });
+  const recorded = attendanceRecorded(student.attendance_percentage, Object.values(profile.marks).map((m) => m?.course_attendance));
+  const status = studentExamStatus({ ...student, total_due: due }, recorded);
   const creditsInProgress = courses.reduce((sum, c) => sum + Number(c.credit), 0);
   const initials = student.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
@@ -55,8 +56,8 @@ export default function ProfileView({ profile }: { profile: Profile }) {
             <div className="min-w-0 flex-1 text-white">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{student.name}</h1>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${eligible ? 'bg-emerald-400/90 text-emerald-950' : 'bg-rose-400/90 text-rose-950'}`}>
-                  {eligible ? '● Exam eligible' : '● Exam blocked'}
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${status === 'eligible' ? 'bg-emerald-400/90 text-emerald-950' : status === 'blocked' ? 'bg-rose-400/90 text-rose-950' : 'bg-white/85 text-indigo-900'}`}>
+                  {status === 'eligible' ? '● Exam eligible' : status === 'blocked' ? '● Exam blocked' : '● Attendance not recorded yet'}
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-indigo-100">
@@ -79,12 +80,16 @@ export default function ProfileView({ profile }: { profile: Profile }) {
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat label="CGPA" value={hasStanding ? standing.cgpa.toFixed(2) : '—'} sub={hasStanding ? `Running, through semester ${Math.max(profile.opening?.through_semester ?? 0, ...results.map((r) => r.semester))}` : 'No results yet'} />
             <Stat label="Credits earned" value={`${standing.creditsEarned} / ${DEGREE_CREDITS}`} sub={`${creditsInProgress} in progress this semester`} />
-            <Stat
-              label="Attendance"
-              value={`${attendance}%`}
-              sub={attendance >= MIN_ATTENDANCE_PERCENT ? `Above the ${MIN_ATTENDANCE_PERCENT}% minimum` : `Below the ${MIN_ATTENDANCE_PERCENT}% minimum`}
-              tone={attendance >= MIN_ATTENDANCE_PERCENT ? 'text-emerald-600' : 'text-rose-600'}
-            />
+            {recorded ? (
+              <Stat
+                label="Attendance"
+                value={`${attendance}%`}
+                sub={attendance >= MIN_ATTENDANCE_PERCENT ? `Above the ${MIN_ATTENDANCE_PERCENT}% minimum` : `Below the ${MIN_ATTENDANCE_PERCENT}% minimum`}
+                tone={attendance >= MIN_ATTENDANCE_PERCENT ? 'text-emerald-600' : 'text-rose-600'}
+              />
+            ) : (
+              <Stat label="Attendance" value="—" sub="Not recorded yet" tone="text-slate-400" />
+            )}
             <Stat label="Fees due" value={taka(due)} sub={due > 0 ? 'Outstanding balance' : 'All clear'} tone={due > 0 ? 'text-rose-600' : 'text-emerald-600'} />
           </div>
         </div>

@@ -206,3 +206,36 @@ export function CohortSelect({ value, onChange, className }: { value: 'all' | 'r
 
 export const taka = (amount: number) => `৳${Math.round(amount).toLocaleString()}`;
 export { cx };
+
+// One-tap semester filter: "All" plus every semester that has students, with how many.
+export function SemesterChips({ value, onChange, counts, always, className }: {
+  value: string;
+  onChange: (value: string) => void;
+  counts: Record<number, number>;
+  always?: number[]; // semesters shown even with no students (e.g. for Curriculum)
+  className?: string;
+}) {
+  const semesters = [...new Set([...(always ?? []), ...Object.keys(counts).map(Number).filter((s) => counts[s] > 0)])].sort((a, b) => a - b);
+  const total = semesters.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
+  const chip = (id: string, label: string, n: number) => (
+    <button
+      key={id}
+      type="button"
+      onClick={() => onChange(id)}
+      aria-pressed={value === id}
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset transition-colors',
+        value === id ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-900',
+      )}
+    >
+      {label}
+      <span className={cx('rounded-full px-1.5 text-[10px]', value === id ? 'bg-white/20' : 'bg-slate-100 text-slate-500')}>{n}</span>
+    </button>
+  );
+  return (
+    <div className={cx('scroll-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1', className)} role="group" aria-label="Semester">
+      {chip('All', 'All semesters', total)}
+      {semesters.map((s) => chip(String(s), `Semester ${s}`, counts[s] ?? 0))}
+    </div>
+  );
+}

@@ -48,7 +48,7 @@ export default function CoursesTab({ semester, courses, marks }: {
               <div className="mt-4">
                 <div className="flex justify-between text-xs font-medium text-slate-500 mb-1.5">
                   <span>Attendance</span>
-                  <span className="font-bold text-slate-800">{attendance}%</span>
+                  <span className="font-bold text-slate-800">{attendance > 0 ? `${attendance}%` : 'Not recorded yet'}</span>
                 </div>
                 <AttendanceBar percent={attendance} />
               </div>

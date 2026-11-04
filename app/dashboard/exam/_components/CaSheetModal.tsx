@@ -20,7 +20,7 @@ const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : 
 
 // Exams → CA mark sheet: the theory-course Mark Sheet with CTs, CT average, attendance marks and
 // CA total filled in from the portal. Any number can be corrected here before downloading.
-export default function CaSheetModal({ onClose }: { onClose: () => void }) {
+export default function CaSheetModal({ onClose, onCustom }: { onClose: () => void; onCustom?: () => void }) {
   const toast = useToast();
   const [students, setStudents] = useState<Person[] | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -233,6 +233,13 @@ export default function CaSheetModal({ onClose }: { onClose: () => void }) {
               </table>
             </div>
           </div>
+        )}
+
+        {onCustom && (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+            Courses or students that are not in the portal (an older syllabus, a special exam)?{' '}
+            <button type="button" onClick={onCustom} className="font-semibold text-indigo-600 hover:text-indigo-800">Make a custom CA sheet →</button>
+          </p>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
