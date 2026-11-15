@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpenCheck, ClipboardCheck, GraduationCap, LayoutDashboard, UsersRound, Wallet } from 'lucide-react';
+import { BookOpenCheck, ClipboardCheck, GraduationCap, LayoutDashboard, ListChecks, UsersRound, Wallet } from 'lucide-react';
 import Brand from '../components/Brand';
 import UserMenu from '../components/UserMenu';
 import { useSessionUser } from '../../utils/useSessionUser';
@@ -16,6 +16,7 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; soon?: b
   { href: '/dashboard/studAff', label: 'Finance', icon: Wallet },
   { href: '/dashboard/academic', label: 'Academic', icon: BookOpenCheck },
   { href: '/dashboard/exam', label: 'Exams', icon: ClipboardCheck },
+  { href: '/dashboard/mcq', label: 'MCQ Exams', icon: ListChecks },
   // Not built yet (sample data only) — marked so nobody takes it for live records.
   { href: '/dashboard/advisor', label: 'Advisory', icon: UsersRound, soon: true },
   { href: '/dashboard/alumni', label: 'Alumni', icon: GraduationCap },

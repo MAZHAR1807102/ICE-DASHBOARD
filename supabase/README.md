@@ -180,3 +180,23 @@ Academic → **Teachers**: everyone with contact details and every course they h
 ended, by batch); Add / Edit / Assign course. Academic → **Curriculum**: pick a semester → **Assign
 teachers** lists all its courses with a teacher box (type or pick a suggestion; the email fills in)
 and one Save; the Add / Edit course forms suggest teachers too.
+
+---
+
+# MCQ exams (014)
+
+Run **before** deploying the matching code.
+
+1. Supabase → SQL Editor → run `migrations/014_mcq_exams.sql`.
+2. Deploy the code.
+
+Creates `mcq_exams` (title, semester or link-only, time limit, draft/open/closed, link code + password,
+questions with the answer key as jsonb) and `mcq_attempts` (one per roll per exam: deadline set by the
+server at start, saved answers, score). Only the HOD can read or change them (RLS); students and link
+guests go through `/api/mcq/*` (service role), which never sends the answer key before submission and
+enforces the timer (30 s grace; overdue attempts are graded on their saved answers).
+HOD → **MCQ Exams**: New exam → upload the question set (PDF / Word / text) or paste it → check every
+question and tick its answer → Create → **Open** → **Share** (link + password, message to copy).
+**Results**: scores best first, Excel download, Reset (sit again). **Close**: no new joins; unfinished
+attempts are graded. Students of the exam's semester see it at the top of their portal (no password);
+anyone else opens `/mcq/<code>`, enters the password, name and roll.
