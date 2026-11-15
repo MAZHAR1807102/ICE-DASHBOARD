@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '../../../../utils/supabase-admin';
 import { createClient } from '../../../../utils/supabase-server';
 import { attemptByToken, currentView, normaliseRoll, signedInStudent, studentRoll, type AttemptRow } from '../../../../utils/mcq-server';
-import type { McqExam } from '../../../../utils/mcq';
+import { shuffledOrder, type McqExam } from '../../../../utils/mcq';
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -50,6 +50,7 @@ export async function POST(request: Request) {
   const deadline = new Date(Date.now() + exam.duration_minutes * 60_000).toISOString();
   const { error } = await admin.from('mcq_attempts').insert({
     exam_id: exam.id, student_id: student?.id ?? null, roll, name, token, deadline,
+    question_order: exam.shuffle ? shuffledOrder(exam.questions.length) : null,
     answers: exam.questions.map(() => null),
   });
   if (error) {

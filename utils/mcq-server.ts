@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { SUBMIT_GRACE_SECONDS, cleanAnswers, gradeAnswers, type AttemptView, type McqAttempt, type McqExam } from './mcq';
+import { SUBMIT_GRACE_SECONDS, cleanAnswers, fromDisplayOrder, gradeAnswers, toDisplayOrder, validOrder, type AttemptView, type McqAttempt, type McqExam } from './mcq';
 
 // Server-only helpers for /api/mcq/*. They run with the service-role client, so every route
 // checks who is asking before calling them, and nothing here ever sends the answer key to a
@@ -30,23 +30,33 @@ export async function finishAttempt(admin: SupabaseClient, attempt: AttemptRow, 
   return (await attemptByToken(admin, attempt.token)) ?? attempt;
 }
 
+// The person sees (and is reviewed in) their own question order; answers are stored in the original order.
 export function attemptView(attempt: AttemptRow): AttemptView {
   const exam = attempt.mcq_exams;
+  const order = validOrder(attempt.question_order, exam.questions.length);
+  const questions = toDisplayOrder(order, exam.questions);
+  const picks = toDisplayOrder(order, cleanAnswers(attempt.answers, exam.questions));
   if (attempt.submitted_at) {
-    const picks = cleanAnswers(attempt.answers, exam.questions);
     return {
       state: 'done', title: exam.title, name: attempt.name, roll: attempt.roll,
       score: attempt.score ?? 0, total: attempt.total ?? exam.questions.length,
       auto: attempt.auto_submitted, submittedAt: attempt.submitted_at,
-      review: exam.questions.map((q, i) => ({ text: q.text, options: q.options, answer: q.answer, picked: picks[i] })),
+      review: questions.map((q, k) => ({ text: q.text, options: q.options, answer: q.answer, picked: picks[k] })),
     };
   }
   return {
     state: 'running', title: exam.title, name: attempt.name, roll: attempt.roll,
-    questions: exam.questions.map((q) => ({ text: q.text, options: q.options })),
-    answers: cleanAnswers(attempt.answers, exam.questions),
+    questions: questions.map((q) => ({ text: q.text, options: q.options })),
+    answers: picks,
     deadline: attempt.deadline, now: new Date().toISOString(),
   };
+}
+
+// Answers sent by the exam page (in the person's order) → the original question order.
+export function answersFromPage(attempt: AttemptRow, shown: unknown) {
+  const questions = attempt.mcq_exams.questions;
+  const order = validOrder(attempt.question_order, questions.length);
+  return cleanAnswers(fromDisplayOrder(order, cleanAnswers(shown, toDisplayOrder(order, questions)), null), questions);
 }
 
 // Load → finish if overdue → view. Used by every route that returns an attempt.

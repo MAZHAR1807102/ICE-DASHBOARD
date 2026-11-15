@@ -13,6 +13,7 @@ export type McqExam = {
   code: string;
   password: string;
   questions: McqQuestion[];
+  shuffle: boolean; // each person gets the questions in their own random order
   created_at: string;
   opened_at: string | null;
   closed_at: string | null;
@@ -26,7 +27,8 @@ export type McqAttempt = {
   name: string;
   started_at: string;
   deadline: string;
-  answers: (number | null)[];
+  question_order: number[] | null; // the order this person sees; null = as written
+  answers: (number | null)[]; // always in the original question order
   submitted_at: string | null;
   auto_submitted: boolean;
   score: number | null;
@@ -63,6 +65,31 @@ export const SUBMIT_GRACE_SECONDS = 30;
 
 export const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
 export const MAX_OPTIONS = OPTION_LABELS.length;
+
+// ---------- Shuffled question order ----------
+// A random order of 0…n-1 (Fisher–Yates with crypto randomness).
+export function shuffledOrder(n: number) {
+  const order = Array.from({ length: n }, (_, i) => i);
+  const r = new Uint32Array(Math.max(n, 1));
+  crypto.getRandomValues(r);
+  for (let i = n - 1; i > 0; i--) {
+    const j = r[i] % (i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
+}
+// A stored order is used only if it is a real permutation of the questions (else: as written).
+export function validOrder(order: unknown, n: number): number[] {
+  const ok = Array.isArray(order) && order.length === n && new Set(order).size === n && order.every((i) => Number.isInteger(i) && i >= 0 && i < n);
+  return ok ? (order as number[]) : Array.from({ length: n }, (_, i) => i);
+}
+// Original order → the order the person sees, and back.
+export const toDisplayOrder = <T,>(order: number[], items: T[]) => order.map((i) => items[i]);
+export function fromDisplayOrder<T>(order: number[], shown: T[], empty: T): T[] {
+  const out: T[] = order.map(() => empty);
+  order.forEach((orig, k) => { out[orig] = shown[k] ?? empty; });
+  return out;
+}
 
 export function gradeAnswers(questions: McqQuestion[], answers: (number | null)[]) {
   const score = questions.reduce((n, q, i) => n + (q.answer !== null && answers[i] === q.answer ? 1 : 0), 0);

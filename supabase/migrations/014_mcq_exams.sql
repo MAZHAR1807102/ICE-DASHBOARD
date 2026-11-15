@@ -2,9 +2,12 @@
 --
 -- * mcq_exams: one row per exam — title, the semester it is for (null = link only), time limit,
 --   draft/open/closed, the link code and its password, and the questions with their answer key
---   (jsonb: [{ "text": …, "options": [ … ], "answer": 0-based index }]).
+--   (jsonb: [{ "text": …, "options": [ … ], "answer": 0-based index }]), and whether each person gets
+--   the questions in their own random order (shuffle).
 -- * mcq_attempts: one row per person per exam (unique by roll). The server sets the deadline when
 --   they start, keeps their answers as they go, and grades them on submit (or at the deadline).
+--   question_order = the order this person sees (shuffled exams); answers are always stored in the
+--   original question order, so grading and results don't depend on it.
 --
 -- Only the HOD reads or changes these tables directly. Students and link guests never touch them:
 -- they go through /api/mcq/*, which runs on the server, hides the answer key until the attempt is
@@ -21,6 +24,7 @@ create table public.mcq_exams (
   code              text not null unique check (code ~ '^[a-z0-9]{6,16}$'),
   password          text not null check (length(password) between 4 and 40),
   questions         jsonb not null default '[]'::jsonb check (jsonb_typeof(questions) = 'array'),
+  shuffle           boolean not null default true,
   created_by        uuid default auth.uid(),
   created_at        timestamptz not null default now(),
   opened_at         timestamptz,
@@ -36,6 +40,7 @@ create table public.mcq_attempts (
   token           text not null unique,
   started_at      timestamptz not null default now(),
   deadline        timestamptz not null,
+  question_order  jsonb check (question_order is null or jsonb_typeof(question_order) = 'array'),
   answers         jsonb not null default '[]'::jsonb,
   submitted_at    timestamptz,
   auto_submitted  boolean not null default false,

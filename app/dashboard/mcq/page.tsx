@@ -95,7 +95,7 @@ export default function McqExamsPage() {
                   <tr key={x.id} className={table.row}>
                     <td className={cx(table.td, 'font-medium text-slate-900')}>{x.title}</td>
                     <td className={cx(table.td, 'whitespace-nowrap')}>{x.semester ? `Semester ${x.semester}` : <span className="text-slate-500">Link only</span>}</td>
-                    <td className={cx(table.td, 'tabular-nums')}>{x.questions.length}</td>
+                    <td className={cx(table.td, 'whitespace-nowrap tabular-nums')}>{x.questions.length}{x.shuffle && <span className="ml-1.5 text-xs text-slate-500">shuffled</span>}</td>
                     <td className={cx(table.td, 'whitespace-nowrap')}>{x.duration_minutes} min</td>
                     <td className={table.td}><Badge tone={STATUS[x.status].tone} dot>{STATUS[x.status].label}</Badge></td>
                     <td className={cx(table.td, 'tabular-nums')}>{x.submitted}{x.joined > x.submitted && <span className="text-slate-500"> (+{x.joined - x.submitted} taking)</span>}</td>
