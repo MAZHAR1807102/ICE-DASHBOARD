@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '../../../../utils/supabase-admin';
-import { attemptByToken, attemptView, currentView, finishAttempt, isOverdue } from '../../../../utils/mcq-server';
-import { cleanAnswers } from '../../../../utils/mcq';
+import { answersFromPage, attemptByToken, attemptView, currentView, finishAttempt, isOverdue } from '../../../../utils/mcq-server';
 
 // The attempt token (a long random string the exam page keeps) is the key to one attempt.
 
@@ -24,7 +23,7 @@ export async function POST(request: Request) {
   // Too late: the answers sent now don't count; the last saved ones are graded.
   if (isOverdue(attempt)) return NextResponse.json(await currentView(admin, attempt));
 
-  const answers = cleanAnswers(body.answers, attempt.mcq_exams.questions);
+  const answers = answersFromPage(attempt, body.answers);
   if (body.submit) {
     return NextResponse.json(attemptView(await finishAttempt(admin, attempt, answers, Boolean(body.auto))));
   }

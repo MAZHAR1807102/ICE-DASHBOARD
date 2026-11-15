@@ -26,6 +26,7 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
   const [duration, setDuration] = useState(String(exam?.duration_minutes ?? 20));
   const [password, setPassword] = useState(exam?.password ?? newExamPassword());
   const [questions, setQuestions] = useState<McqQuestion[]>(exam?.questions ?? []);
+  const [shuffle, setShuffle] = useState(exam?.shuffle ?? true);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasted, setPasted] = useState('');
@@ -69,7 +70,7 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
     if (!/^[A-Za-z0-9]{4,40}$/.test(password)) return toast.error('Password: 4 to 40 letters or digits.');
     const cleaned = questions.map((q) => ({ text: q.text.trim(), options: q.options.map((o) => o.trim()), answer: q.answer }));
     setSaving(true);
-    const row = { title: title.trim(), semester, duration_minutes: minutes, password, ...(locked ? {} : { questions: cleaned }) };
+    const row = { title: title.trim(), semester, duration_minutes: minutes, password, ...(locked ? {} : { questions: cleaned, shuffle }) };
     const { error } = exam
       ? await supabase.from('mcq_exams').update(row).eq('id', exam.id)
       : await supabase.from('mcq_exams').insert({ ...row, code: newExamCode() });
@@ -101,6 +102,13 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
               <Button variant="secondary" icon={RefreshCw} onClick={() => setPassword(newExamPassword())} aria-label="New password" />
             </div>
           </Field>
+          <label className={cx('flex items-start gap-2.5 sm:col-span-6', locked && 'opacity-60')}>
+            <input type="checkbox" checked={shuffle} disabled={locked} onChange={(e) => setShuffle(e.target.checked)} className="mt-0.5 size-4 accent-indigo-600" />
+            <span className="text-sm">
+              <span className="font-medium text-slate-700">Shuffle questions</span>
+              <span className="block text-xs text-slate-500">Each student gets the questions in a different order, so neighbours can’t follow each other’s numbers. Results and the answer key are not affected.</span>
+            </span>
+          </label>
         </div>
 
         <section className="rounded-xl ring-1 ring-slate-200">

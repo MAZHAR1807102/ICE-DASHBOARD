@@ -195,6 +195,8 @@ questions with the answer key as jsonb) and `mcq_attempts` (one per roll per exa
 server at start, saved answers, score). Only the HOD can read or change them (RLS); students and link
 guests go through `/api/mcq/*` (service role), which never sends the answer key before submission and
 enforces the timer (30 s grace; overdue attempts are graded on their saved answers).
+With **Shuffle questions** on (default) each attempt gets its own question order at the start; answers are
+stored in the original order, so results and grading don't depend on it.
 HOD → **MCQ Exams**: New exam → upload the question set (PDF / Word / text) or paste it → check every
 question and tick its answer → Create → **Open** → **Share** (link + password, message to copy).
 **Results**: scores best first, Excel download, Reset (sit again). **Close**: no new joins; unfinished

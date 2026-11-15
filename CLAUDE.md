@@ -35,6 +35,8 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
   answers autosaved, auto-submit at 0:00 (30 s grace, overdue graded on saved answers), then score + review
   of wrong/unanswered with correct option. Results modal: best first, Excel, Reset attempt. Close grades
   unfinished attempts. Student portal strip `McqExams.tsx` (/api/mcq/mine). Questions lock once anyone joined.
+  Shuffle questions (exam setting, default on): order fixed per attempt at join (`question_order`), answers
+  always stored in original order (`answersFromPage` maps back), review shown in the student's order.
   User choices: answers from PDF + HOD review (no AI); students via login + link guests; review shown at once.
 - Not built: advisor portal (user said leave it), password cleanup (user chose to keep default
   student password; don't raise it).
