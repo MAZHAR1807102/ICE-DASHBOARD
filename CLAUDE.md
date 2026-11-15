@@ -2,7 +2,7 @@
 
 # CSE Department Portal — project handoff
 
-Last updated: 2026-11-04 (organize changes deployed: student status, Exam menus, semester chips, Top sheet, Advisory Soon)
+Last updated: 2026-11-15 (branch `mcq-exam` built: HOD MCQ exams; needs migration 014, not deployed)
 
 ## What this is
 Student management system for the CSE department of **Imperial College of Engineering, Khulna**
@@ -24,6 +24,18 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
   70/20/10 format only — user said not to build the older 60/10/5 format in), CA sheets list each CT
   only for first-year courses.
 - Teachers list + Assign teachers (migration 013) deployed 2026-10-26.
+- Built 2026-11-15 on branch `mcq-exam`, **pending**: user runs `014_mcq_exams.sql`, then says deploy.
+  HOD-only **MCQ Exams** (`/dashboard/mcq`; DASHBOARD_ACCESS ['hod']): create exam (title, semester or
+  link-only, minutes, password), upload question set PDF/.docx/.txt or paste → `parseMcqText` (utils/mcq.ts:
+  "1."/"Q1)"/Bangla ১। numbers; a)/(a)/A./ক) options, several per line OK; answers from "Ans: b", "উত্তর: খ",
+  a */✓ on an option, or an "Answer key" section/bare "1-b 2-c" line) → editor to check/tick answers →
+  Open (blocked until every question has ≥2 options + an answer) → Share link `/mcq/<code>` + password.
+  Exam page `app/mcq/[code]` is public (not in proxy matcher): signed-in students of that semester join
+  without password; others give password + name + roll; one attempt per roll (unique); server deadline,
+  answers autosaved, auto-submit at 0:00 (30 s grace, overdue graded on saved answers), then score + review
+  of wrong/unanswered with correct option. Results modal: best first, Excel, Reset attempt. Close grades
+  unfinished attempts. Student portal strip `McqExams.tsx` (/api/mcq/mine). Questions lock once anyone joined.
+  User choices: answers from PDF + HOD review (no AI); students via login + link guests; review shown at once.
 - Not built: advisor portal (user said leave it), password cleanup (user chose to keep default
   student password; don't raise it).
 
@@ -44,7 +56,10 @@ Next.js 16 (App Router, `proxy.ts` instead of middleware) + React 19 + Tailwind 
 - `utils/` — `rollsheet*.ts` (roll sheets, data loading, .docx import incl. Bijoy→Unicode),
   `labsheet-docx.ts`, `ca-sheet.ts`, `result-sheet.ts` (RU PDF/Excel parser), `cohort.ts`
   (Regular/Readd), `grades.ts`, `profile.ts`, `types.ts`, `auth.ts` (roles, DASHBOARD_ACCESS).
-- `supabase/migrations/001…013` + `supabase/README.md` (what each does, run order).
+- `supabase/migrations/001…014` + `supabase/README.md` (what each does, run order).
+- MCQ: `utils/mcq.ts` (types, parser, grading), `utils/mcq-file.ts` (PDF/Word → lines, browser),
+  `utils/mcq-server.ts` (service-role helpers), `app/api/mcq/{info,join,attempt,mine,manage}`,
+  `app/dashboard/mcq` (HOD panel), `app/mcq/[code]` (exam page).
 - Department's source documents (outside the repo): `../StudentRollSheet/`, `~/Downloads/`
   (CA sheets, lab mark sheet, roll sheets, teacher lists, top sheets).
 
