@@ -1,14 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { AlertTriangle, FileUp, Plus, RefreshCw, Trash2, Type } from 'lucide-react';
+import { AlertTriangle, FileCheck2, FileUp, Plus, RefreshCw, Trash2, Type } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { Button, Field, cx, inputClass } from '../../../components/ui';
 import { useConfirm, useToast } from '../../../components/Providers';
 import { supabase } from '../../../../utils/supabase';
 import { SEMESTERS } from '../../../../utils/types';
 import { semesterTitle } from '../../../../utils/rollsheet';
-import { MAX_OPTIONS, OPTION_LABELS, newExamCode, newExamPassword, parseMcqText, questionProblems, type McqExam, type McqQuestion } from '../../../../utils/mcq';
+import { MAX_OPTIONS, OPTION_LABELS, applyAnswerKey, newExamCode, newExamPassword, parseAnswerKey, parseMcqText, questionProblems, type McqExam, type McqQuestion } from '../../../../utils/mcq';
 
 // Create or edit an MCQ exam: settings, read the question set from a file (or pasted text),
 // then check every question and tick its correct option. Once anyone has started the exam the
@@ -30,9 +30,11 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasted, setPasted] = useState('');
+  const [pastedKey, setPastedKey] = useState('');
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
 
   const problems = questionProblems(questions);
   const setQuestion = (i: number, patch: Partial<McqQuestion>) => setQuestions((list) => list.map((q, k) => (k === i ? { ...q, ...patch } : q)));
@@ -60,6 +62,34 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
     } finally {
       setReading(false);
       if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  // Answers from a separate file: ticks each question's option, then says what didn't match.
+  const applyKey = (lines: string[] | string) => {
+    const result = applyAnswerKey(questions, parseAnswerKey(lines));
+    if (!result.matched) return toast.error('No answers were found in that file. Each answer should look like "1. b", "1-b", or a row of numbers with a row of letters under it.');
+    setQuestions(result.questions);
+    const notes = [
+      ...result.missing.map((n) => `Question ${n}: not in the answer key — tick it.`),
+      ...result.unclear.map((n) => `Question ${n}: the answer in the key doesn't match any option — tick it.`),
+      ...(result.extra ? [`The key has ${result.extra} answer${result.extra === 1 ? '' : 's'} for question numbers that aren't here — check both files are for the same set.`] : []),
+    ];
+    setWarnings(notes);
+    if (notes.length) toast.info(`Ticked ${result.matched} of ${questions.length} answers. Check the highlighted questions.`);
+    else toast.success(`Ticked all ${result.matched} answers from the key.`);
+  };
+
+  const readKeyFile = async (file: File) => {
+    setReading(true);
+    try {
+      const { readQuestionFile } = await import('../../../../utils/mcq-file');
+      applyKey(await readQuestionFile(file));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not read the file.');
+    } finally {
+      setReading(false);
+      if (keyRef.current) keyRef.current.value = '';
     }
   };
 
@@ -116,13 +146,15 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
             <div>
               <p className="font-semibold text-slate-900">Questions <span className="font-normal text-slate-500">({questions.length})</span></p>
               <p className="text-xs text-slate-500">
-                {locked ? 'Locked — people have already started this exam.' : 'Upload the question set (PDF, Word or text). Answers are read from "Ans: b", a starred option, or an answer key at the end.'}
+                {locked ? 'Locked — people have already started this exam.' : 'Upload the question set (PDF, Word or text). Answers in the same file ("Ans: b", a starred option, a key at the end) are ticked automatically; if they are in a separate file, upload it with "Upload answer key".'}
               </p>
             </div>
             {!locked && (
               <div className="flex flex-wrap gap-2">
                 <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden" onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0])} />
                 <Button size="sm" icon={FileUp} loading={reading} onClick={() => fileRef.current?.click()}>Upload question set</Button>
+                <input ref={keyRef} type="file" accept=".pdf,.docx,.txt" className="hidden" onChange={(e) => e.target.files?.[0] && readKeyFile(e.target.files[0])} />
+                <Button size="sm" variant="secondary" icon={FileCheck2} disabled={!questions.length || reading} onClick={() => keyRef.current?.click()} title={questions.length ? undefined : 'Upload the questions first'}>Upload answer key</Button>
                 <Button size="sm" variant="secondary" icon={Type} onClick={() => setPasteOpen((v) => !v)}>Paste text</Button>
               </div>
             )}
@@ -132,12 +164,18 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
             <div className="space-y-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
               <textarea rows={6} value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder={'1. Which data structure uses LIFO?\na) Queue\nb) Stack\nc) Tree\nd) Graph\nAns: b'} className={cx(inputClass, 'font-mono text-xs')} />
               <Button size="sm" disabled={!pasted.trim()} onClick={() => applyParsed(pasted)}>Read pasted questions</Button>
+              {questions.length > 0 && (
+                <>
+                  <textarea rows={3} value={pastedKey} onChange={(e) => setPastedKey(e.target.value)} placeholder={'Answer key — e.g.\n1. b   2. c   3. a\nor 1-b, 2-c, 3-a'} className={cx(inputClass, 'font-mono text-xs')} />
+                  <Button size="sm" variant="secondary" disabled={!pastedKey.trim()} onClick={() => applyKey(pastedKey)}>Apply pasted answer key</Button>
+                </>
+              )}
             </div>
           )}
 
           {warnings.length > 0 && (
             <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-              <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="size-3.5" /> Check these after reading the file:</p>
+              <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="size-3.5" /> Check these:</p>
               <ul className="mt-1 list-disc pl-5">{warnings.slice(0, 8).map((w) => <li key={w}>{w}</li>)}</ul>
               {warnings.length > 8 && <p className="mt-1">…and {warnings.length - 8} more.</p>}
             </div>

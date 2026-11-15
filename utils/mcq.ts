@@ -262,3 +262,84 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
   if (!questions.length) warnings.push('No numbered questions were found. Make sure each question starts with a number like "1." or "Q1)".');
   return { questions, warnings };
 }
+
+// ---------------------------------------------------------------------------------------------
+// A separate answer-key file (questions in one file, answers in another).
+//
+// Understands, in any mix:
+//   1. b    1) (B)    1-b    Q1: B    1 b    ১। খ     — several per line is fine
+//   1. b) Stack                                       — the letter is used
+//   1. Stack                                          — matched to that question's option text
+//   a table: a row of question numbers, the next row their letters (1 2 3 4 / b c a d)
+//   only letters, in question order: b c a d …        — when the key has no numbers at all
+// Question k of the key is question k in the editor.
+// ---------------------------------------------------------------------------------------------
+
+const LETTER_ONLY = new RegExp(`^[(\\[]?(${LETTER})[)\\].]?$`);
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9ঀ-৿]+/g, ' ').trim();
+
+export function parseAnswerKey(input: string | string[]) {
+  const lines = (Array.isArray(input) ? input : input.split(/\r?\n/))
+    .map((l) => toAsciiDigits(l.replace(/\u00a0/g, ' ')).replace(/\s+/g, ' ').trim())
+    // A label in front ("Answers: 1-b, 2-c") is dropped; a heading on its own line is skipped below.
+    .map((l) => l.replace(/^(?:answer\s*key|answers?|key|উত্তরমালা|উত্তর|সঠিক\s*উত্তর)\s*[:：-]\s*/i, ''))
+    .filter(Boolean);
+  const key = new Map<number, string>(); // question number → letter or answer text
+  const sequence: string[] = []; // letters with no numbers, in order
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const tokens = line.split(/[\s,;|]+/).filter(Boolean);
+    // A row of numbers followed by a row of the same number of letters (a key table).
+    const next = lines[i + 1]?.split(/[\s,;|]+/).filter(Boolean);
+    if (tokens.length >= 2 && tokens.every((t) => /^\d{1,3}[.)]?$/.test(t)) && next && next.length === tokens.length && next.every((t) => LETTER_ONLY.test(t))) {
+      tokens.forEach((t, k) => key.set(parseInt(t, 10), next[k]));
+      i++;
+      continue;
+    }
+    // Only letters: answers in question order.
+    if (tokens.length && tokens.every((t) => LETTER_ONLY.test(t)) && !/^\d/.test(line)) {
+      sequence.push(...tokens.map((t) => t.match(LETTER_ONLY)![1]));
+      continue;
+    }
+    // "1. b 2. c …" pairs on one line.
+    const pairs = keyPairs(line);
+    if (pairs) {
+      for (const m of line.matchAll(KEY_PAIR)) key.set(Number(m[1]), m[2]);
+      continue;
+    }
+    // "1. b) Stack", "Q1: B", "1. Stack" — one answer on the line.
+    const one = line.match(/^(?:Q(?:uestion)?\s*[.:-]?\s*)?(\d{1,3})\s*[.)\]:।=-]?\s*(.+)$/i);
+    if (one) {
+      const rest = one[2].trim();
+      const letter = rest.match(new RegExp(`^[(\\[]?(${LETTER})(?:[)\\].]|$|\\s)`));
+      key.set(Number(one[1]), letter ? letter[1] : rest);
+    }
+  }
+  if (!key.size) sequence.forEach((a, k) => key.set(k + 1, a));
+  return key;
+}
+
+// Ticks the answers from a key onto the questions. Returns the new questions and what didn't match.
+export function applyAnswerKey(questions: McqQuestion[], key: Map<number, string>) {
+  const missing: number[] = [], unclear: number[] = [];
+  let matched = 0;
+  const updated = questions.map((q, i) => {
+    const raw = key.get(i + 1);
+    if (raw === undefined) { missing.push(i + 1); return q; }
+    let answer: number | null = raw.length <= 3 ? letterIndex(raw.replace(/[()[\].]/g, '')) : null;
+    if (answer === null) {
+      // The answer written out: match the option text (exact first, then contained).
+      const want = norm(raw);
+      const options = q.options.map(norm);
+      const exact = options.indexOf(want);
+      const contained = options.findIndex((o) => o && (want.includes(o) || o.includes(want)));
+      answer = exact >= 0 ? exact : contained >= 0 && want.length >= 2 ? contained : null;
+    }
+    if (answer === null || answer >= q.options.length || !q.options[answer]?.trim()) { unclear.push(i + 1); return q; }
+    matched++;
+    return { ...q, answer };
+  });
+  const extra = [...key.keys()].filter((n) => n > questions.length).length;
+  return { questions: updated, matched, missing, unclear, extra };
+}
