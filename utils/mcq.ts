@@ -1,7 +1,10 @@
 // MCQ exams: question format, reading a question set from plain text (PDF / Word / pasted), grading.
 // Pure functions — shared by the HOD panel, the exam page and the /api/mcq routes.
 
-export type McqQuestion = { text: string; options: string[]; answer: number | null };
+// `image`: the question (stem + options) cut from the PDF as a picture, shown instead of the text so
+// equations, tables and figures look exactly as printed. `labels`: how the options are lettered there.
+export type McqImage = { path: string; width: number; height: number };
+export type McqQuestion = { text: string; options: string[]; answer: number | null; image?: McqImage; labels?: string[] };
 export type McqStatus = 'draft' | 'open' | 'closed';
 
 export type McqExam = {
@@ -35,13 +38,21 @@ export type McqAttempt = {
   total: number | null;
 };
 
+// A question as the exam page shows it. `picture`: its size, when it has one — the picture itself is
+// fetched from /api/mcq/image with the attempt token (by its place in this person's order).
+export type ShownQuestion = { text: string; options: string[]; labels?: string[]; picture?: { width: number; height: number } };
+export const shownQuestion = (q: McqQuestion): ShownQuestion => ({
+  text: q.text, options: q.options, labels: q.labels,
+  picture: q.image ? { width: q.image.width, height: q.image.height } : undefined,
+});
+
 // What the exam page gets: questions without the answer key while the attempt is running…
 export type RunningAttempt = {
   state: 'running';
   title: string;
   name: string;
   roll: string;
-  questions: { text: string; options: string[] }[];
+  questions: ShownQuestion[];
   answers: (number | null)[];
   deadline: string;
   now: string; // server clock, so the countdown doesn't depend on the device's clock
@@ -56,7 +67,7 @@ export type FinishedAttempt = {
   total: number;
   auto: boolean;
   submittedAt: string;
-  review: { text: string; options: string[]; answer: number | null; picked: number | null }[];
+  review: (ShownQuestion & { answer: number | null; picked: number | null })[];
 };
 export type AttemptView = RunningAttempt | FinishedAttempt;
 
@@ -111,10 +122,11 @@ export function questionProblems(questions: McqQuestion[]) {
   if (!questions.length) problems.push('There are no questions yet.');
   questions.forEach((q, i) => {
     const n = i + 1;
-    if (!q.text.trim()) problems.push(`Question ${n} has no text.`);
-    const filled = q.options.filter((o) => o.trim()).length;
+    // A question shown as a picture has its text and options in the picture.
+    if (!q.image && !q.text.trim()) problems.push(`Question ${n} has no text.`);
+    const filled = q.image ? q.options.length : q.options.filter((o) => o.trim()).length;
     if (filled < 2) problems.push(`Question ${n} needs at least 2 options.`);
-    if (q.answer === null || !q.options[q.answer]?.trim()) problems.push(`Question ${n} has no correct answer ticked.`);
+    if (q.answer === null || q.answer >= q.options.length || (!q.image && !q.options[q.answer]?.trim())) problems.push(`Question ${n} has no correct answer ticked.`);
   });
   return problems;
 }
@@ -144,6 +156,11 @@ const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
 const toAsciiDigits = (s: string) => s.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)));
 const OPTION_LETTER: Record<string, number> = { a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, 'ক': 0, 'খ': 1, 'গ': 2, 'ঘ': 3, 'ঙ': 4, 'চ': 5 };
 const letterIndex = (letter: string) => OPTION_LETTER[letter.toLowerCase()] ?? null;
+// The option letters in the style the paper uses (a b c d / A B C D / ক খ গ ঘ).
+const labelSet = (letter?: string) =>
+  !letter ? undefined : /[ক-ঙচ]/.test(letter) ? ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ'] : letter === letter.toLowerCase() ? ['a', 'b', 'c', 'd', 'e', 'f'] : undefined;
+// Option k's letter for a question (A B C… unless the paper used another style).
+export const optionLabel = (q: { labels?: string[] }, k: number) => q.labels?.[k] ?? OPTION_LABELS[k];
 
 const LETTER = '[a-fA-Fক-ঙচ]';
 const QUESTION_START = /^(?:Q(?:uestion)?\s*[.:-]?\s*)?(\d{1,3})\s*[.)\]:।-]\s*(.*)$/i;
@@ -195,18 +212,19 @@ function splitOptions(line: string) {
   const pieces = used.map((m, k) => {
     const start = (m.index ?? 0) + m[0].length;
     const end = k + 1 < used.length ? used[k + 1].index ?? line.length : line.length;
-    return { index: letterIndex(markLetter(m)) ?? 0, text: line.slice(start, end).trim() };
+    return { index: letterIndex(markLetter(m)) ?? 0, letter: markLetter(m), text: line.slice(start, end).trim() };
   });
   return { lead: line.slice(0, used[0].index ?? 0).trim(), pieces };
 }
 
-export function parseMcqText(input: string | string[]): { questions: McqQuestion[]; warnings: string[] } {
+// `numbers`: each question's number as printed (to find its picture in the PDF).
+export function parseMcqText(input: string | string[]): { questions: McqQuestion[]; numbers: number[]; warnings: string[] } {
   const lines = (Array.isArray(input) ? input : input.split(/\r?\n/))
     // A stray raised/lowered character from the line above (₂ 87. …) must not hide the question number.
     .map((l) => toAsciiDigits(l.replace(/ /g, ' ')).replace(/\s+/g, ' ').trim().replace(/^[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺₀₁₂₃₄₅₆₇₈₉₋₊\s]+(?=\d)/, ''))
     .filter(Boolean);
 
-  type Draft = { n: number; text: string[]; options: string[]; answer: number | null; inOptions: boolean };
+  type Draft = { n: number; text: string[]; options: string[]; answer: number | null; inOptions: boolean; letter?: string };
   const drafts: Draft[] = [];
   const key = new Map<number, number>();
   let current: Draft | null = null;
@@ -252,7 +270,7 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
       const split = splitOptions(rest);
       if (split && split.pieces.length >= 2) {
         if (split.lead) current.text.push(split.lead);
-        for (const p of split.pieces) addOption(current, p.index, p.text);
+        for (const p of split.pieces) addOption(current, p.index, p.text, p.letter);
       } else if (rest) current.text.push(rest);
       continue;
     }
@@ -265,7 +283,7 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
         if (current.inOptions) current.options[current.options.length - 1] = joinWrapped(current.options[current.options.length - 1], split.lead);
         else current.text.push(split.lead);
       }
-      for (const p of split.pieces) addOption(current, p.index, p.text);
+      for (const p of split.pieces) addOption(current, p.index, p.text, p.letter);
       continue;
     }
     // A continuation of the question or of the last option.
@@ -284,8 +302,9 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
     return !continues && otherStart;
   }
 
-  function addOption(d: Draft, index: number, text: string) {
+  function addOption(d: Draft, index: number, text: string, letter: string) {
     let t = text;
+    d.letter ??= letter;
     if (CORRECT_MARK.test(t)) {
       t = t.replace(CORRECT_MARK, '').trim();
       d.answer = index;
@@ -304,10 +323,10 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
     const own = d.text.reduce((a, b) => (a ? joinWrapped(a, b) : b), '').trim();
     const shared = passages.find((p) => d.n >= p.from && d.n <= p.to && p.text.length);
     const text = shared ? `${shared.text.reduce((a, b) => (a ? joinWrapped(a, b) : b), '')}\n\n${own}` : own;
-    return { text, options, answer };
+    return { text, options, answer, labels: labelSet(d.letter) };
   });
   if (!questions.length) warnings.push('No numbered questions were found. Make sure each question starts with a number like "1." or "Q1)".');
-  return { questions, warnings };
+  return { questions, numbers: drafts.map((d) => d.n), warnings };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -390,7 +409,7 @@ export function applyAnswerKey(questions: McqQuestion[], key: Map<number, string
       const contained = options.findIndex((o) => o && (want.includes(o) || o.includes(want)));
       answer = exact >= 0 ? exact : contained >= 0 && want.length >= 2 ? contained : null;
     }
-    if (answer === null || answer >= q.options.length || !q.options[answer]?.trim()) { unclear.push(i + 1); return q; }
+    if (answer === null || answer >= q.options.length || (!q.image && !q.options[answer]?.trim())) { unclear.push(i + 1); return q; }
     matched++;
     return { ...q, answer };
   });
@@ -554,23 +573,30 @@ function pageLines(items: PdfTextItem[], width: number, titleAbove: number | nul
 
 const PAGE_NUMBER = /^[-–—(\s]*(?:page|p\.?|পৃষ্ঠা)?\s*\d{1,3}\s*(?:(?:of|\/)\s*\d{1,3})?[-–—)\s]*$/i;
 
-export function pdfPagesToLines(pages: { width: number; items: PdfTextItem[] }[]): string[] {
+type PdfPage = { width: number; height?: number; items: PdfTextItem[] };
+// A page after its running header/footer is removed: where the content may start and end (PDF units,
+// y upwards), and the title block above question 1 on the first question page.
+type CleanPage = { width: number; items: PdfTextItem[]; titleAbove: number | null; top: number; bottom: number };
+
+function cleanPages(pages: PdfPage[]): CleanPage[] {
   // Running headers/footers: the top and bottom two rows of each page, piece by piece. A piece that
   // repeats on other pages (digits ignored), or is only a page number, is removed before reading.
   const shape = (t: string) => toAsciiDigits(t).replace(/\d+/g, '#').toLowerCase().trim();
   const edges = pages.map((page) => {
     const rows = buildRows(page.items.filter((it) => it.str.trim()));
-    return [...rows.slice(0, 2), ...rows.slice(-2)];
+    return { head: rows.slice(0, 2), foot: rows.slice(-2).filter((r) => !rows.slice(0, 2).includes(r)) };
   });
   const seen = new Map<string, number>();
-  for (const rows of edges) for (const sh of new Set(rows.flatMap((r) => r.segs.map((g) => shape(g.text))))) seen.set(sh, (seen.get(sh) ?? 0) + 1);
+  for (const e of edges) for (const sh of new Set([...e.head, ...e.foot].flatMap((r) => r.segs.map((g) => shape(g.text))))) seen.set(sh, (seen.get(sh) ?? 0) + 1);
   // Exam content is never furniture, however alike it looks from page to page.
   const content = (t: string) => NUMBER_START.test(t) || OPTION_START.test(t) || ANSWER_LINE.test(t) || /\?\s*$/.test(t) || PASSAGE_START.test(t);
   const furniture = (t: string) => !content(t) && ((pages.length >= 2 && (seen.get(shape(t)) ?? 0) >= Math.max(2, Math.ceil(pages.length / 2))) || PAGE_NUMBER.test(toAsciiDigits(t)));
+  const dropped = (rows: Row[]) => rows.flatMap((r) => r.segs.filter((g) => furniture(g.text)).map((g) => ({ y: r.y, h: r.h, x: g.x, end: g.end })));
 
   let questionsStarted = false;
-  return pages.flatMap((page, p) => {
-    const drop = edges[p].flatMap((r) => r.segs.filter((g) => furniture(g.text)).map((g) => ({ y: r.y, h: r.h, x: g.x, end: g.end })));
+  return pages.map((page, p) => {
+    const head = dropped(edges[p].head), foot = dropped(edges[p].foot);
+    const drop = [...head, ...foot];
     const items = page.items.filter((it) => it.str.trim() && !drop.some((d) => Math.abs(it.y - d.y) < 0.6 * d.h && it.x >= d.x - 1 && it.x + it.w <= d.end + 1));
     // Until the first question appears, text above it on that page is the title block.
     let titleAbove: number | null = null;
@@ -578,6 +604,135 @@ export function pdfPagesToLines(pages: { width: number; items: PdfTextItem[] }[]
       const firstQ = items.filter((it) => /^\s*(?:Q\s*)?[1১]\s*[.)।]/.test(it.str)).sort((a, b) => b.y - a.y)[0];
       if (firstQ) { titleAbove = firstQ.y + 0.6 * firstQ.h; questionsStarted = true; }
     }
-    return pageLines(items, page.width, titleAbove);
+    const height = page.height ?? Math.max(0, ...page.items.map((it) => it.y + it.h)) + 36;
+    return {
+      width: page.width, items, titleAbove,
+      top: head.length ? Math.min(...head.map((d) => d.y - 0.35 * d.h)) : height,
+      bottom: foot.length ? Math.max(...foot.map((d) => d.y + d.h)) : 0,
+    };
   });
+}
+
+export function pdfPagesToLines(pages: PdfPage[]): string[] {
+  return cleanPages(pages).flatMap((page) => pageLines(page.items, page.width, page.titleAbove));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Where each question is printed, so it can be shown to students as a picture of the page —
+// equations, tables and figures exactly as in the PDF.
+//
+// Walks every column of every page in reading order. A question runs from its number down to the
+// next question's number (or an answer line / answer key / shared-passage heading), continuing into
+// the next column or page if it is cut there. A shared passage is put above each of its questions.
+// `hide` is the printed question number, blanked so it doesn't clash with the student's numbering.
+// ---------------------------------------------------------------------------------------------
+
+export type PdfBox = { page: number; x0: number; x1: number; top: number; bottom: number }; // PDF units, y upwards
+// A cut made just above a printed line (baseline y, text height h). Tall print on that line — a matrix,
+// ∫, √ — can reach above it, so the picture maker moves the cut up to the nearest blank strip.
+export type CutLine = { y: number; h: number };
+export type QuestionPart = PdfBox & { topAt?: CutLine; bottomAt?: CutLine };
+export type QuestionRegion = { parts: QuestionPart[]; hide: PdfBox[] };
+
+export function pdfQuestionRegions(pages: PdfPage[]): Map<number, QuestionRegion> {
+  const regions = new Map<number, QuestionRegion>();
+  const passages: { from: number; to: number; region: QuestionRegion }[] = [];
+  let current: QuestionRegion | null = null;
+  let segTop = 0;
+  let segTopAt: CutLine | undefined;
+  let segRows = 0; // lines in the piece being cut (a piece with none is left out)
+  let segRight = 0; // its widest line (a formula may run past the column)
+  let lastN = 0;
+
+  cleanPages(pages).forEach((page, p) => {
+    const body = page.titleAbove === null ? page.items : page.items.filter((it) => it.y <= page.titleAbove!);
+    const gap = columnGap(body, page.width);
+    // A column is cut a little wider than its text, but not as far as a rule printed between columns.
+    // (Text starting in the left column belongs to it even if a wide formula runs past the middle.)
+    const column = (items: PdfTextItem[], from: number, to: number) => {
+      const inside = items.filter((it) => it.x + it.w <= to + 2);
+      return {
+        items,
+        // (ignoring a stray piece of a formula spilling over from the other column)
+        x0: Math.max(from, (from > 0 ? items.map((it) => it.x).sort((m, n) => m - n)[Math.floor(items.length * 0.02)] : Math.min(...items.map((it) => it.x))) - (from > 0 ? 2 : 6)),
+        x1: Math.min(to, Math.max(...(inside.length ? inside : items).map((it) => it.x + it.w)) + (to < page.width ? 2 : 6)),
+      };
+    };
+    const columns = gap === null
+      ? [column(body, 0, page.width)]
+      : [column(body.filter((it) => it.x < gap), 0, gap - 1), column(body.filter((it) => it.x >= gap), gap + 1, page.width)];
+    const colTop = Math.min(page.top, page.titleAbove ?? Infinity);
+
+    for (const col of columns) {
+      const rows = buildRows(col.items);
+      if (!rows.length) continue;
+      // Question numbers hang at the column's left edge (a figure label may sit further left — ignored).
+      // (A stray superscript from the next column may sit in front of the number.)
+      const numberSeg = (r: Row) => r.segs.find((g) => NUMBER_START.test(toAsciiDigits(g.text)));
+      const numbered = rows.flatMap((r) => numberSeg(r) ?? []);
+      const left = Math.min(...(numbered.length ? numbered : rows.map((r) => r.segs[0])).map((g) => g.x));
+      const close = (bottom: number, bottomAt?: CutLine) => {
+        if (current && segRows && segTop - bottom > 4) current.parts.push({ page: p, x0: col.x0, x1: Math.min(page.width, Math.max(col.x1, segRight + 2)), top: segTop, bottom, topAt: segTopAt, bottomAt });
+        segRight = 0;
+      };
+      segTop = colTop;
+      segTopAt = undefined;
+      segRows = 0;
+      rows.forEach((row, k) => {
+        const right = Math.max(...row.segs.map((sg) => sg.end));
+        const text = row.segs.map((g) => g.text).join(' ');
+        const above = rows[k - 1];
+        // Halfway between the line above and this one.
+        const boundary = above ? (above.y - 0.3 * above.h + row.y + 0.95 * row.h) / 2 : row.y + 1.2 * row.h;
+        const g = numberSeg(row);
+        const num = g && g.x <= left + 12 ? toAsciiDigits(g.text).match(/^(?:Q(?:uestion)?\s*)?(\d{1,3})\s*[.)\]:।]/i) : null;
+        const n = num ? Number(num[1]) : 0;
+        const at = { y: row.y, h: row.h };
+        if (g && num && n > lastN && n <= lastN + 5) {
+          close(boundary, at);
+          lastN = n;
+          current = { parts: [], hide: [] };
+          regions.set(n, current);
+          segTop = boundary;
+          segTopAt = at;
+          segRows = 1;
+          segRight = right;
+          // The number's own width: its text item if printed alone ("12."), else its share of the item.
+          const item = col.items.filter((it) => Math.abs(it.y - row.y) < 0.5 * row.h && it.x >= g.x - 1 && it.x <= g.x + 2)[0];
+          const piece = item ? toAsciiDigits(item.str).trim() : '';
+          const width = item && piece.startsWith(num[1])
+            ? (item.w * Math.min(piece.length, num[0].trim().length)) / Math.max(piece.length, 1)
+            : ((g.end - g.x) * num[0].length) / Math.max(g.text.length, 1);
+          current.hide.push({ page: p, x0: g.x - 2, x1: g.x + width + 2.5, top: row.y + 0.95 * row.h, bottom: row.y - 0.3 * row.h });
+          return;
+        }
+        const shared = text.match(PASSAGE_START);
+        if (ANSWER_LINE.test(text) || KEY_HEADING.test(text) || keyPairs(text) || shared) {
+          close(boundary, at);
+          current = null;
+          if (shared) {
+            const [from, to] = [Number(shared[1] ?? shared[3]), Number(shared[2] ?? shared[4])].sort((a, b) => a - b);
+            current = { parts: [], hide: [] };
+            passages.push({ from, to: to - from > 10 ? from : to, region: current });
+            segTop = boundary;
+            segTopAt = at;
+            segRows = 1;
+            segRight = right;
+          }
+          return;
+        }
+        segRows++;
+        segRight = Math.max(segRight, right);
+      });
+      close(page.bottom);
+    }
+  });
+
+  for (const { from, to, region } of passages) {
+    for (let n = from; n <= to; n++) {
+      const q = regions.get(n);
+      if (q && region.parts.length) regions.set(n, { parts: [...region.parts, ...q.parts], hide: q.hide });
+    }
+  }
+  return regions;
 }

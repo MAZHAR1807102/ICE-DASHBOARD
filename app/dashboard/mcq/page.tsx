@@ -63,6 +63,8 @@ export default function McqExamsPage() {
     if (!(await confirm({ title: `Delete "${exam.title}"?`, body: exam.joined ? `Its ${exam.joined} result${exam.joined === 1 ? '' : 's'} are deleted too. This cannot be undone.` : 'This cannot be undone.', confirmLabel: 'Delete', tone: 'danger' }))) return;
     const { error } = await supabase.from('mcq_exams').delete().eq('id', exam.id);
     if (error) return toast.error(`Could not delete: ${error.message}`);
+    // Its question pictures go too.
+    fetch('/api/mcq/image', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: exam.code }) }).catch(() => {});
     toast.success('Exam deleted.');
     load();
   };

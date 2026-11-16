@@ -6,7 +6,7 @@ import { CheckCircle2, Clock, KeyRound, ListChecks, Send, XCircle } from 'lucide
 import Brand from '../../components/Brand';
 import { Button, Card, Field, cx, inputClass } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
-import { OPTION_LABELS, type AttemptView, type FinishedAttempt, type RunningAttempt } from '../../../utils/mcq';
+import { optionLabel, type AttemptView, type FinishedAttempt, type RunningAttempt, type ShownQuestion } from '../../../utils/mcq';
 
 type Info = {
   title: string; semester: number | null; duration: number; count: number; status: 'open' | 'closed';
@@ -64,7 +64,7 @@ export default function McqExamPage() {
         ) : view?.state === 'running' && token ? (
           <Runner code={code} token={token} initial={view} onDone={setView} />
         ) : view?.state === 'done' ? (
-          <Result result={view} />
+          <Result result={view} token={token} />
         ) : (
           <Join code={code} info={info} onStarted={started} />
         )}
@@ -205,17 +205,18 @@ function Runner({ code, token, initial, onDone }: { code: string; token: string;
         {initial.questions.map((q, i) => (
           <li key={i}>
             <Card className="p-4">
-              <fieldset>
-                <legend className="mb-3 flex gap-2 font-medium text-slate-900"><span className="text-slate-400">{i + 1}.</span><span className="whitespace-pre-line">{q.text}</span></legend>
-                <div className="space-y-2">
-                  {q.options.map((opt, k) => (
-                    <label key={k} className={cx('flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 ring-1 ring-inset transition-colors', answers[i] === k ? 'bg-indigo-50 ring-indigo-400' : 'ring-slate-200 hover:bg-slate-50')}>
-                      <input type="radio" name={`q${i}`} checked={answers[i] === k} onChange={() => pick(i, k)} disabled={submitting} className="mt-1 accent-indigo-600" />
-                      <span className="text-sm"><b className="mr-1.5 text-slate-500">{OPTION_LABELS[k]}.</b>{opt}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
+              <QuestionView q={q} n={i + 1} src={`/api/mcq/image?token=${encodeURIComponent(token)}&q=${i}`}>
+                {(asPicture) => (
+                  <div className={asPicture ? 'grid grid-cols-2 gap-2 sm:grid-cols-4' : 'space-y-2'}>
+                    {q.options.map((opt, k) => (
+                      <label key={k} className={cx('flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 ring-1 ring-inset transition-colors', answers[i] === k ? 'bg-indigo-50 ring-indigo-400' : 'ring-slate-200 hover:bg-slate-50')}>
+                        <input type="radio" name={`q${i}`} checked={answers[i] === k} onChange={() => pick(i, k)} disabled={submitting} className="mt-1 accent-indigo-600" aria-label={asPicture ? `Option ${optionLabel(q, k)}` : undefined} />
+                        <span className="text-sm"><b className={cx('text-slate-500', asPicture ? 'text-base' : 'mr-1.5')}>({optionLabel(q, k)})</b>{!asPicture && opt}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </QuestionView>
             </Card>
           </li>
         ))}
@@ -229,7 +230,26 @@ function Runner({ code, token, initial, onDone }: { code: string; token: string;
   );
 }
 
-function Result({ result }: { result: FinishedAttempt }) {
+// A question: its picture from the PDF (exactly as printed — equations, tables, figures) or, for a
+// question typed in / read from Word, its text. If the picture can't load, the text is shown instead.
+function QuestionView({ q, n, src, children }: { q: ShownQuestion; n: number; src: string; children: (asPicture: boolean) => React.ReactNode }) {
+  const [broken, setBroken] = useState(false);
+  const asPicture = Boolean(q.picture) && !broken;
+  return (
+    <fieldset>
+      <legend className="mb-3 flex w-full gap-2 font-medium text-slate-900">
+        <span className="text-slate-400">{n}.</span>
+        {asPicture ? (
+          // eslint-disable-next-line @next/next/no-img-element -- private, token-checked picture
+          <img src={src} alt={q.text} width={q.picture!.width} height={q.picture!.height} onError={() => setBroken(true)} className="h-auto max-w-full min-w-0 select-none" draggable={false} />
+        ) : <span className="whitespace-pre-line">{q.text}</span>}
+      </legend>
+      {children(asPicture)}
+    </fieldset>
+  );
+}
+
+function Result({ result, token }: { result: FinishedAttempt; token: string | null }) {
   const [showAll, setShowAll] = useState(false);
   const pct = result.total ? Math.round((result.score / result.total) * 100) : 0;
   const wrong = result.review.filter((q) => q.picked !== q.answer).length;
@@ -254,22 +274,27 @@ function Result({ result }: { result: FinishedAttempt }) {
         {items.map((q) => (
           <li key={q.n}>
             <Card className="p-4">
-              <p className="mb-3 flex gap-2 font-medium text-slate-900"><span className="text-slate-400">{q.n}.</span><span className="whitespace-pre-line">{q.text}</span></p>
-              <div className="space-y-1.5">
-                {q.options.map((opt, k) => {
-                  const correct = k === q.answer, mine = k === q.picked;
-                  return (
-                    <div key={k} className={cx('flex items-start gap-2 rounded-lg px-3 py-2 text-sm ring-1 ring-inset', correct ? 'bg-emerald-50 ring-emerald-300' : mine ? 'bg-rose-50 ring-rose-300' : 'ring-slate-200')}>
-                      {correct ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : mine ? <XCircle className="mt-0.5 size-4 shrink-0 text-rose-600" /> : <span className="size-4 shrink-0" />}
-                      <span><b className="mr-1.5 text-slate-500">{OPTION_LABELS[k]}.</b>{opt}
-                        {correct && <span className="ml-2 text-xs font-semibold text-emerald-700">Correct answer</span>}
-                        {mine && !correct && <span className="ml-2 text-xs font-semibold text-rose-700">Your answer</span>}
-                      </span>
-                    </div>
-                  );
-                })}
-                {q.picked === null && <p className="text-xs font-semibold text-amber-700">You did not answer this one.</p>}
-              </div>
+              <QuestionView q={q} n={q.n} src={token ? `/api/mcq/image?token=${encodeURIComponent(token)}&q=${q.n - 1}` : ''}>
+                {(asPicture) => (
+                  <div className={asPicture ? 'grid gap-1.5 sm:grid-cols-2' : 'space-y-1.5'}>
+                    {q.options.map((opt, k) => {
+                      const correct = k === q.answer, mine = k === q.picked;
+                      // With a picture only the right answer and a wrong pick are listed.
+                      if (asPicture && !correct && !mine) return null;
+                      return (
+                        <div key={k} className={cx('flex items-start gap-2 rounded-lg px-3 py-2 text-sm ring-1 ring-inset', correct ? 'bg-emerald-50 ring-emerald-300' : mine ? 'bg-rose-50 ring-rose-300' : 'ring-slate-200')}>
+                          {correct ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : mine ? <XCircle className="mt-0.5 size-4 shrink-0 text-rose-600" /> : <span className="size-4 shrink-0" />}
+                          <span><b className="mr-1.5 text-slate-500">({optionLabel(q, k)})</b>{!asPicture && opt}
+                            {correct && <span className="ml-2 text-xs font-semibold text-emerald-700">{mine ? 'Your answer — correct' : 'Correct answer'}</span>}
+                            {mine && !correct && <span className="ml-2 text-xs font-semibold text-rose-700">Your answer</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {q.picked === null && <p className="text-xs font-semibold text-amber-700">You did not answer this one.</p>}
+                  </div>
+                )}
+              </QuestionView>
             </Card>
           </li>
         ))}

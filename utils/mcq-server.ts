@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { SUBMIT_GRACE_SECONDS, cleanAnswers, fromDisplayOrder, gradeAnswers, toDisplayOrder, validOrder, type AttemptView, type McqAttempt, type McqExam } from './mcq';
+import { SUBMIT_GRACE_SECONDS, cleanAnswers, shownQuestion, fromDisplayOrder, gradeAnswers, toDisplayOrder, validOrder, type AttemptView, type McqAttempt, type McqExam } from './mcq';
 
 // Server-only helpers for /api/mcq/*. They run with the service-role client, so every route
 // checks who is asking before calling them, and nothing here ever sends the answer key to a
@@ -41,12 +41,12 @@ export function attemptView(attempt: AttemptRow): AttemptView {
       state: 'done', title: exam.title, name: attempt.name, roll: attempt.roll,
       score: attempt.score ?? 0, total: attempt.total ?? exam.questions.length,
       auto: attempt.auto_submitted, submittedAt: attempt.submitted_at,
-      review: questions.map((q, k) => ({ text: q.text, options: q.options, answer: q.answer, picked: picks[k] })),
+      review: questions.map((q, k) => ({ ...shownQuestion(q), answer: q.answer, picked: picks[k] })),
     };
   }
   return {
     state: 'running', title: exam.title, name: attempt.name, roll: attempt.roll,
-    questions: questions.map((q) => ({ text: q.text, options: q.options })),
+    questions: questions.map(shownQuestion),
     answers: picks,
     deadline: attempt.deadline, now: new Date().toISOString(),
   };
