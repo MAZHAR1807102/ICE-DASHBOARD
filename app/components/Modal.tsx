@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-const WIDTHS = { sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg', xl: 'sm:max-w-3xl' };
+const WIDTHS = { sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg', xl: 'sm:max-w-3xl', full: 'sm:max-w-6xl' };
 
 // Bottom sheet on phones, centred dialog on larger screens. Esc closes it.
 export default function Modal({
