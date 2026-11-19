@@ -5,8 +5,9 @@ import { supabase } from '../../utils/supabase';
 import Brand from '../components/Brand';
 import UserMenu from '../components/UserMenu';
 import { useSessionUser } from '../../utils/useSessionUser';
-import { ClipboardEdit } from 'lucide-react';
-import { EmptyState } from '../components/ui';
+import { ClipboardEdit, Code2 } from 'lucide-react';
+import { EmptyState, Tabs } from '../components/ui';
+import JudgeManager from '../components/judge/JudgeManager';
 import GradeCalculatorButton from '../components/GradeCalculator';
 import MarksSheet, { type TeacherCourse } from './_components/MarksSheet';
 
@@ -17,6 +18,7 @@ export default function TeacherPortal() {
   const user = useSessionUser();
   const [courses, setCourses] = useState<TeacherCourse[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<'marks' | 'judge'>('marks');
 
   const loadCourses = useCallback(() =>
     supabase.rpc('teacher_courses').then(({ data }) => {
@@ -43,6 +45,13 @@ export default function TeacherPortal() {
         </div>
       </header>
 
+      <div className="mx-auto max-w-6xl px-4 pt-5">
+        <Tabs tabs={[{ id: 'marks', label: 'CT marks', icon: ClipboardEdit }, { id: 'judge', label: 'Coding tests', icon: Code2 }]} value={view} onChange={setView} />
+      </div>
+
+      {view === 'judge' ? (
+        <main className="mx-auto max-w-6xl px-4 py-5"><JudgeManager /></main>
+      ) : (
       <main className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[18rem_1fr] gap-5 items-start">
         <aside className="space-y-2">
           <h1 className="text-xs font-black uppercase tracking-widest text-slate-400 px-1 mb-2">My courses</h1>
@@ -76,6 +85,7 @@ export default function TeacherPortal() {
           )}
         </section>
       </main>
+      )}
     </div>
   );
 }

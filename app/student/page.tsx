@@ -8,6 +8,7 @@ import UserMenu from '../components/UserMenu';
 import { loadProfile, type Profile } from './_components/data';
 import ProfileView from './_components/ProfileView';
 import McqExams from './_components/McqExams';
+import JudgeTests from './_components/JudgeTests';
 
 export default function StudentPortal() {
   const router = useRouter();
@@ -43,6 +44,7 @@ export default function StudentPortal() {
       </header>
 
       <McqExams />
+      <JudgeTests />
       <ProfileView profile={profile} />
 
     </div>

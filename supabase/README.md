@@ -202,3 +202,28 @@ question and tick its answer → Create → **Open** → **Share** (link + passw
 **Results**: scores best first, Excel download, Reset (sit again). **Close**: no new joins; unfinished
 attempts are graded. Students of the exam's semester see it at the top of their portal (no password);
 anyone else opens `/mcq/<code>`, enters the password, name and roll.
+
+# Online judge — coding tests (015)
+
+Run **before** deploying the matching code.
+
+1. Supabase → SQL Editor → run `migrations/015_online_judge.sql`.
+2. Deploy the code.
+3. (When the judge server is ready) Vercel → Settings → Environment Variables (Production): `JUDGE0_URL`
+   (e.g. `http://<server-ip>:2358`) and `JUDGE0_AUTH_TOKEN` (the token set on that server) — or
+   `JUDGE0_RAPIDAPI_KEY` for the hosted RapidAPI service — then redeploy. Until then everything works except
+   judging: submissions wait as "Waiting for the judge" and are judged once it is connected
+   (Results → **Judge waiting**, or automatically when the student's page is open).
+
+Creates `judge_problems` (shared problem bank: statement, samples, hidden test cases, limits; every teacher
+reads it, only the author or the HOD changes a problem), `judge_tests` (lab test / exam / assignment /
+practice / contest; semester or link-only; languages C, C++, Java; optional per-person timer and deadline;
+strict mode), `judge_participants` (one per roll per test, with warnings, every time they left the page,
+and blocked) and `judge_submissions` (code, verdict, tests passed, marks). A teacher reads their own tests'
+participants and submissions; the HOD reads all. `judge_violation()` (service role only) counts a leave
+atomically: one leave = one count (events within 4 s merged); 1st = warning, 2nd = blocked.
+Students and link guests go through `/api/judge/*` (service role), which never sends hidden test cases.
+**Strict mode** (default on): no copy / cut / paste / drag-and-drop / right-click in the code editor and big
+sudden insertions refused; leaving the page (tab, app, window over 1.5 s, closing a timed test) → 1st
+warning, 2nd logged out + blocked from that test until the **HOD** unblocks (Results → Unblock; warnings
+reset, the record stays). Teachers: teacher portal → **Coding tests**; HOD: dashboard → **Coding Tests**.
