@@ -34,6 +34,7 @@ export async function POST(request: Request) {
 
   const { data: existing } = await admin.from('mcq_attempts').select('*, mcq_exams(*)').eq('exam_id', exam.id).eq('roll', roll).maybeSingle<AttemptRow>();
   if (existing) {
+    if (existing.blocked && !existing.submitted_at) return fail('You were blocked from this exam for leaving the page. Ask the HOD to unblock you.', 403);
     // Resume only on the same device (its saved token) or as the signed-in student it belongs to.
     const sameDevice = typeof body.token === 'string' && body.token === existing.token;
     if (!sameDevice && !student) {

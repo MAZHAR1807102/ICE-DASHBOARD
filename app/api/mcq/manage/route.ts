@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, graded: running?.length ?? 0 });
   }
 
+  // Strict mode: let a blocked person continue (their timer kept running); warnings start again.
+  if (body.action === 'unblock' && typeof body.attemptId === 'string') {
+    const { error } = await supabase.from('mcq_attempts').update({ blocked: false, blocked_at: null, warnings: 0 }).eq('id', body.attemptId).eq('exam_id', exam.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (body.action === 'reset' && typeof body.attemptId === 'string') {
     const { error } = await supabase.from('mcq_attempts').delete().eq('id', body.attemptId).eq('exam_id', exam.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

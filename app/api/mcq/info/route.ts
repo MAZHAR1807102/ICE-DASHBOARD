@@ -18,16 +18,17 @@ export async function GET(request: Request) {
   let me = null;
   if (student) {
     const roll = studentRoll(student);
-    const { data: attempt } = await admin.from('mcq_attempts').select('token, submitted_at').eq('exam_id', exam.id).eq('roll', roll).maybeSingle();
+    const { data: attempt } = await admin.from('mcq_attempts').select('token, submitted_at, blocked').eq('exam_id', exam.id).eq('roll', roll).maybeSingle();
     me = {
       name: student.name, roll,
       ownSemester: exam.semester !== null && exam.semester === student.semester,
       token: attempt?.token ?? null, submitted: Boolean(attempt?.submitted_at),
+      blocked: Boolean(attempt?.blocked && !attempt.submitted_at),
     };
   }
 
   return NextResponse.json({
     title: exam.title, semester: exam.semester, duration: exam.duration_minutes,
-    count: exam.questions.length, status: exam.status, me,
+    count: exam.questions.length, status: exam.status, strict: exam.strict, me,
   });
 }
