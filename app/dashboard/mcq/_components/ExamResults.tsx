@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { FileDown, RotateCcw } from 'lucide-react';
+import { FileDown, RotateCcw, Unlock } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { Badge, Button, cx, table } from '../../../components/ui';
 import { useConfirm, useToast } from '../../../components/Providers';
@@ -31,7 +31,7 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
   const rows = (attempts ?? []).map((a) => {
     const timeUp = !a.submitted_at && loadedAt > new Date(a.deadline).getTime() + SUBMIT_GRACE_SECONDS * 1000;
     const { score, total } = a.submitted_at ? { score: a.score ?? 0, total: a.total ?? exam.questions.length } : gradeAnswers(exam.questions, cleanAnswers(a.answers, exam.questions));
-    const status = a.submitted_at ? (a.auto_submitted ? 'Auto-submitted' : 'Submitted') : timeUp ? 'Time up' : 'Taking now';
+    const status = a.submitted_at ? (a.auto_submitted ? 'Auto-submitted' : 'Submitted') : a.blocked ? 'Blocked' : timeUp ? 'Time up' : 'Taking now';
     return { ...a, score, total, status, pct: total ? Math.round((score / total) * 100) : 0 };
   }).sort((a, b) => b.score - a.score || a.roll.localeCompare(b.roll));
 
@@ -39,8 +39,8 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
     const XLSX = await import('xlsx');
     const sheet = XLSX.utils.aoa_to_sheet([
       [exam.title], [],
-      ['SL', 'Roll', 'Name', 'Score', 'Out of', 'Percent', 'Status', 'Started'],
-      ...rows.map((r, i) => [i + 1, r.roll, r.name, r.score, r.total, r.pct, r.status, when(r.started_at)]),
+      ['SL', 'Roll', 'Name', 'Score', 'Out of', 'Percent', 'Status', 'Started', 'Left the page', 'Left at'],
+      ...rows.map((r, i) => [i + 1, r.roll, r.name, r.score, r.total, r.pct, r.blocked && r.submitted_at ? `${r.status} (blocked)` : r.status, when(r.started_at), r.violations?.length ?? 0, (r.violations ?? []).map((v) => when(v.at)).join(', ')]),
     ]);
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, 'Results');
@@ -53,6 +53,15 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
     const body = await res.json().catch(() => ({}));
     if (!res.ok) return toast.error(body.error ?? 'Could not reset.');
     toast.success(`${a.roll} can take the exam again.`);
+    load();
+  };
+
+  const unblock = async (a: McqAttempt) => {
+    if (!(await confirm({ title: `Unblock ${a.roll}?`, body: `${a.name} can continue the exam if time is left (their timer kept running). Their warnings start again from zero.`, confirmLabel: 'Unblock' }))) return;
+    const res = await fetch('/api/mcq/manage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: exam.id, action: 'unblock', attemptId: a.id }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return toast.error(body.error ?? 'Could not unblock.');
+    toast.success(`${a.roll} is unblocked.`);
     load();
   };
 
@@ -70,7 +79,7 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
           <div className={table.wrap}>
             <table className={table.table}>
               <thead className={table.head}>
-                <tr><th className={table.th}>#</th><th className={table.th}>Roll</th><th className={table.th}>Name</th><th className={table.th}>Score</th><th className={table.th}>Status</th><th className={table.th}><span className="sr-only">Actions</span></th></tr>
+                <tr><th className={table.th}>#</th><th className={table.th}>Roll</th><th className={table.th}>Name</th><th className={table.th}>Score</th><th className={table.th}>Status</th><th className={table.th}>Left the page</th><th className={table.th}><span className="sr-only">Actions</span></th></tr>
               </thead>
               <tbody className={table.body}>
                 {rows.map((r, i) => (
@@ -80,9 +89,17 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
                     <td className={table.td}>{r.name}</td>
                     <td className={cx(table.td, 'whitespace-nowrap font-semibold tabular-nums')}>{r.score}/{r.total} <span className="font-normal text-slate-500">({r.pct}%)</span></td>
                     <td className={table.td}>
-                      <Badge tone={r.status === 'Taking now' ? 'sky' : r.status === 'Time up' ? 'amber' : 'emerald'} dot>{r.status}</Badge>
+                      <Badge tone={r.status === 'Blocked' ? 'rose' : r.status === 'Taking now' ? 'sky' : r.status === 'Time up' ? 'amber' : 'emerald'} dot>{r.status}</Badge>
+                    </td>
+                    <td className={cx(table.td, 'text-xs')}>
+                      {r.violations?.length ? (
+                        <span className={r.blocked ? 'font-semibold text-rose-700' : 'text-amber-700'} title={r.violations.map((v) => `${when(v.at)} — ${v.kind}`).join('\n')}>
+                          {r.violations.length}× · last {when(r.violations[r.violations.length - 1].at)}{r.blocked ? ' · blocked' : ''}
+                        </span>
+                      ) : <span className="text-slate-400">—</span>}
                     </td>
                     <td className={cx(table.td, 'text-right')}>
+                      {r.blocked && !r.submitted_at && <Button size="xs" variant="success" icon={Unlock} onClick={() => unblock(r)} className="mr-1">Unblock</Button>}
                       <Button size="xs" variant="ghost" icon={RotateCcw} onClick={() => reset(r)} className="hover:bg-rose-50 hover:text-rose-600">Reset</Button>
                     </td>
                   </tr>

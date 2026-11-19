@@ -227,3 +227,18 @@ Students and link guests go through `/api/judge/*` (service role), which never s
 sudden insertions refused; leaving the page (tab, app, window over 1.5 s, closing a timed test) → 1st
 warning, 2nd logged out + blocked from that test until the **HOD** unblocks (Results → Unblock; warnings
 reset, the record stays). Teachers: teacher portal → **Coding tests**; HOD: dashboard → **Coding Tests**.
+
+# MCQ strict mode (016)
+
+Run **after 015 and before** deploying the matching code (the MCQ editor saves the new `strict` setting).
+
+1. Supabase → SQL Editor → run `migrations/016_mcq_strict.sql`.
+2. Deploy the code.
+
+Adds `mcq_exams.strict` (new exams: on; exams that already existed: off) and, on `mcq_attempts`, `warnings`,
+`violations` (every time they left), `blocked`, `blocked_at`, plus `mcq_violation()` (service role only;
+same rule as coding tests: one leave = one count, 1st = warning, 2nd = blocked). A blocked person can't save,
+submit or rejoin (`/api/mcq/*`); the HOD unblocks in **Results → Unblock** (their timer kept running;
+warnings reset, the record stays). Strict MCQ pages also block copying the questions.
+Student portal: **Online tests** tab (own portal only, not "View as student") lists open MCQ exams and
+coding tests for the semester and past results (`/api/mcq/mine`, `/api/judge/mine`).

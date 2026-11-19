@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const attempt = await attemptByToken(admin, body.token);
   if (!attempt) return NextResponse.json({ error: 'Exam attempt not found.' }, { status: 404 });
-  if (attempt.submitted_at) return NextResponse.json(attemptView(attempt));
+  if (attempt.submitted_at || attempt.blocked) return NextResponse.json(attemptView(attempt));
 
   // Too late: the answers sent now don't count; the last saved ones are graded.
   if (isOverdue(attempt)) return NextResponse.json(await currentView(admin, attempt));

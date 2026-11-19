@@ -36,6 +36,7 @@ export function attemptView(attempt: AttemptRow): AttemptView {
   const order = validOrder(attempt.question_order, exam.questions.length);
   const questions = toDisplayOrder(order, exam.questions);
   const picks = toDisplayOrder(order, cleanAnswers(attempt.answers, exam.questions));
+  if (attempt.blocked && !attempt.submitted_at) return { state: 'blocked', title: exam.title };
   if (attempt.submitted_at) {
     return {
       state: 'done', title: exam.title, name: attempt.name, roll: attempt.roll,
@@ -49,6 +50,7 @@ export function attemptView(attempt: AttemptRow): AttemptView {
     questions: questions.map(shownQuestion),
     answers: picks,
     deadline: attempt.deadline, now: new Date().toISOString(),
+    strict: exam.strict, warnings: attempt.warnings,
   };
 }
 

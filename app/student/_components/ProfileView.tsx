@@ -12,11 +12,12 @@ import PaymentsTab from './PaymentsTab';
 import NoticesList from './NoticesList';
 import { Card, taka } from './ui';
 
-type Tab = 'overview' | 'courses' | 'results' | 'payments' | 'notices';
+type Tab = 'overview' | 'courses' | 'results' | 'tests' | 'payments' | 'notices';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'courses', label: 'Courses & CT' },
   { id: 'results', label: 'Results' },
+  { id: 'tests', label: 'Online tests' },
   { id: 'payments', label: 'Payments' },
   { id: 'notices', label: 'Notices' },
 ];
@@ -32,7 +33,8 @@ function Stat({ label, value, sub, tone = 'text-slate-900' }: { label: string; v
 }
 
 // The student portal below the top bar. Staff see the same view through "View as student".
-export default function ProfileView({ profile }: { profile: Profile }) {
+// `onlineTests`: the student's own MCQ exams and coding tests (their portal only, not "View as student").
+export default function ProfileView({ profile, onlineTests }: { profile: Profile; onlineTests?: React.ReactNode }) {
   const [tab, setTab] = useState<Tab>('overview');
   const { student, courses, results, transactions, notices } = profile;
   const standing = academicStanding(results, profile.opening);
@@ -98,7 +100,7 @@ export default function ProfileView({ profile }: { profile: Profile }) {
       {/* TABS */}
       <nav className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto" role="tablist">
-          {TABS.map((t) => (
+          {TABS.filter((t) => t.id !== 'tests' || onlineTests).map((t) => (
             <button
               key={t.id}
               role="tab"
@@ -117,6 +119,7 @@ export default function ProfileView({ profile }: { profile: Profile }) {
         {tab === 'overview' && <OverviewTab profile={profile} onOpen={setTab} />}
         {tab === 'courses' && <CoursesTab semester={student.semester} courses={courses} marks={profile.marks} />}
         {tab === 'results' && <ResultsTab results={results} official={profile.official} opening={profile.opening} />}
+        {tab === 'tests' && onlineTests}
         {tab === 'payments' && <PaymentsTab student={student} transactions={transactions} />}
         {tab === 'notices' && <Card title="Department notices"><NoticesList notices={notices} /></Card>}
       </main>

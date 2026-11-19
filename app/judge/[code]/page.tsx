@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, Ban, CheckCircle2, Clock, Code2, Flag, KeyRound, LogOut, Play, Send, ShieldAlert, Trophy } from 'lucide-react';
+import { CheckCircle2, Clock, Code2, Flag, KeyRound, LogOut, Play, Send, Trophy } from 'lucide-react';
+import { BlockedNotice, LeaveWarning, StrictRules } from '../../components/LeaveWarning';
+import { reportLeave, useLeaveGuard } from '../../../utils/useLeaveGuard';
 import Brand from '../../components/Brand';
 import CodeEditor from '../../components/judge/CodeEditor';
 import { Badge, Button, Card, Field, cx, inputClass } from '../../components/ui';
@@ -83,7 +85,7 @@ export default function JudgeTestPage() {
       {error ? (
         <main className="mx-auto max-w-3xl px-4 py-6"><Card className="p-8 text-center"><p className="font-semibold text-slate-900">{error}</p></Card></main>
       ) : blocked ? (
-        <main className="mx-auto max-w-3xl px-4 py-6"><BlockedNotice /></main>
+        <main className="mx-auto max-w-3xl px-4 py-6"><BlockedNotice what="test" /></main>
       ) : !info ? (
         <p className="py-16 text-center text-sm text-slate-500">Loading…</p>
       ) : view?.state === 'running' && token ? (
@@ -96,21 +98,6 @@ export default function JudgeTestPage() {
         </main>
       )}
     </div>
-  );
-}
-
-function BlockedNotice() {
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-col items-center gap-3 bg-rose-600 px-6 py-8 text-center text-white">
-        <Ban className="size-10" aria-hidden />
-        <h1 className="text-xl font-bold">You are blocked from this test</h1>
-      </div>
-      <div className="space-y-2 p-6 text-center text-sm text-slate-600">
-        <p>You left the test page a second time, so you were logged out and blocked.</p>
-        <p>Only the <b>HOD</b> can unblock you. Contact your teacher or the department.</p>
-      </div>
-    </Card>
   );
 }
 
@@ -154,15 +141,10 @@ function Join({ code, info, onStarted, onBlocked }: { code: string; info: Info; 
       ) : (
         <form onSubmit={start} className="space-y-4 p-6">
           {info.strict && (
-            <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900 ring-1 ring-rose-200">
-              <p className="flex items-center gap-2 font-bold"><ShieldAlert className="size-4" aria-hidden /> Rules of this test</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li><b>Copy and paste are turned off</b> in the code editor. Type your code yourself.</li>
-                <li><b>Do not leave the test page</b> — no other tabs, apps or windows{timed ? ', and do not close or reload the page' : ''}.</li>
-                <li>The <b>first time</b> you leave, you get a warning. The <b>second time</b>, you are <b>logged out and blocked</b> until the HOD unblocks you.</li>
-                {!timed && <li>To stop and continue later, press <b>Save &amp; leave</b> first.</li>}
-              </ul>
-            </div>
+            <StrictRules what="test" closingCounts={timed} extra={<>
+              <li><b>Copy and paste are turned off</b> in the code editor. Type your code yourself.</li>
+              {!timed && <li>To stop and continue later, press <b>Save &amp; leave</b> first.</li>}
+            </>} />
           )}
           <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
             {info.duration && <li>The timer starts when you press <b>Start</b> and keeps running even if the page is closed.</li>}
@@ -213,7 +195,6 @@ function Workspace({ code, token, initial, onView, onBlocked }: { code: string; 
   const [now, setNow] = useState(() => Date.now());
   const [offset] = useState(() => new Date(initial.now).getTime() - Date.now());
   const leaving = useRef(false); // true while the page is meant to be left (finished, blocked, Save & leave)
-  const lastReport = useRef(0);
   const warnings = useRef(initial.me.warnings);
 
   const { test } = view;
@@ -242,38 +223,14 @@ function Workspace({ code, token, initial, onView, onBlocked }: { code: string; 
   }, [token, apply]);
 
   // ---- Strict mode: leaving the page (another tab/app/window, minimising, closing) ----
-  useEffect(() => {
-    if (!test.strict) return;
-    let blurTimer: ReturnType<typeof setTimeout> | undefined;
-    const report = (kind: string) => {
-      if (leaving.current) return;
-      const t = Date.now();
-      if (t - lastReport.current < 4000) return; // one leave, several browser events
-      lastReport.current = t;
-      // keepalive: delivered even if the page is being closed.
-      post('/api/judge/violation', { token, kind }, true).then(({ ok, body }) => {
-        if (!ok) return;
-        if (body.blocked) { leaving.current = true; onBlocked(); return; }
-        if (body.warnings > warnings.current) { warnings.current = body.warnings; setWarned(true); setWarning(true); }
-      }).catch(() => {});
-    };
-    const onVisibility = () => { if (document.visibilityState === 'hidden') report('left the tab'); };
-    // Another window/app in front while this one is still visible: counted if it lasts over 1.5 s.
-    const onBlur = () => { blurTimer = setTimeout(() => { if (!document.hasFocus()) report('switched to another window'); }, 1500); };
-    const onFocus = () => clearTimeout(blurTimer);
-    const onBeforeUnload = (e: BeforeUnloadEvent) => { if (!leaving.current && timed) e.preventDefault(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('blur', onBlur);
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => {
-      clearTimeout(blurTimer);
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('blur', onBlur);
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('beforeunload', onBeforeUnload);
-    };
-  }, [test.strict, timed, token, onBlocked]);
+  useLeaveGuard({
+    active: test.strict,
+    paused: () => leaving.current,
+    closingCounts: timed,
+    report: (kind) => reportLeave('/api/judge/violation', token, kind),
+    onWarning: (n) => { if (n > warnings.current) { warnings.current = n; setWarned(true); setWarning(true); } },
+    onBlocked: () => { leaving.current = true; onBlocked(); },
+  });
 
   // Clock; when time is up the server says the test is over.
   useEffect(() => {
@@ -470,21 +427,7 @@ function Workspace({ code, token, initial, onView, onBlocked }: { code: string; 
         <p className="py-16 text-center text-sm text-slate-500">This test has no problems.</p>
       )}
 
-      {warning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="alertdialog" aria-modal="true" aria-labelledby="leave-warning">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center gap-3 bg-amber-500 px-5 py-4 text-white">
-              <AlertTriangle className="size-7 shrink-0" aria-hidden />
-              <p id="leave-warning" className="text-lg font-bold">Warning: you left the test page</p>
-            </div>
-            <div className="space-y-3 p-5 text-sm text-slate-700">
-              <p>This has been recorded and your teacher can see it.</p>
-              <p className="font-semibold text-rose-700">If you leave the page again, you will be logged out and blocked from this test until the HOD unblocks you.</p>
-              <Button className="w-full" onClick={() => setWarning(false)}>I understand — back to the test</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {warning && <LeaveWarning what="test" onClose={() => setWarning(false)} />}
     </div>
   );
 }

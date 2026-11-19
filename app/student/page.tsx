@@ -9,6 +9,7 @@ import { loadProfile, type Profile } from './_components/data';
 import ProfileView from './_components/ProfileView';
 import McqExams from './_components/McqExams';
 import JudgeTests from './_components/JudgeTests';
+import OnlineTestsTab from './_components/OnlineTestsTab';
 
 export default function StudentPortal() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function StudentPortal() {
 
       <McqExams />
       <JudgeTests />
-      <ProfileView profile={profile} />
+      <ProfileView profile={profile} onlineTests={<OnlineTestsTab />} />
 
     </div>
   );

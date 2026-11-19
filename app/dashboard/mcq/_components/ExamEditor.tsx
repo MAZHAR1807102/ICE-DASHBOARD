@@ -30,6 +30,7 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
   const [password, setPassword] = useState(exam?.password ?? newExamPassword());
   const [questions, setQuestions] = useState<McqQuestion[]>(exam?.questions ?? []);
   const [shuffle, setShuffle] = useState(exam?.shuffle ?? true);
+  const [strict, setStrict] = useState(exam?.strict ?? true);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasted, setPasted] = useState('');
@@ -153,7 +154,7 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
       text: q.text.trim(), options: q.options.map((o) => o.trim()), answer: q.answer,
       ...(q.image ? { image: q.image } : {}), ...(q.labels ? { labels: q.labels } : {}),
     }));
-    const row = { title: title.trim(), semester, duration_minutes: minutes, password, ...(locked ? {} : { questions: cleaned, shuffle }) };
+    const row = { title: title.trim(), semester, duration_minutes: minutes, password, strict, ...(locked ? {} : { questions: cleaned, shuffle }) };
     const { error } = exam
       ? await supabase.from('mcq_exams').update(row).eq('id', exam.id)
       : await supabase.from('mcq_exams').insert({ ...row, code });
@@ -194,6 +195,13 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
             <span className="text-sm">
               <span className="font-medium text-slate-700">Shuffle questions</span>
               <span className="block text-xs text-slate-500">Each student gets the questions in a different order, so neighbours can’t follow each other’s numbers. Results and the answer key are not affected.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2.5 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200 sm:col-span-6">
+            <input type="checkbox" checked={strict} onChange={(e) => setStrict(e.target.checked)} className="mt-0.5 size-4 accent-rose-600" />
+            <span className="text-sm">
+              <span className="font-semibold text-rose-900">Strict mode</span>
+              <span className="block text-xs text-rose-800">Leaving the exam page (another tab, app or window, or closing it) once gives a warning; the second time the student is logged out and blocked until you unblock them in Results. Copying the questions is turned off.</span>
             </span>
           </label>
         </div>

@@ -6,17 +6,21 @@ import { CheckCircle2, Clock, KeyRound, ListChecks, Send, XCircle } from 'lucide
 import Brand from '../../components/Brand';
 import { Button, Card, Field, cx, inputClass } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
+import { BlockedNotice, LeaveWarning, StrictRules } from '../../components/LeaveWarning';
+import { supabase } from '../../../utils/supabase';
+import { reportLeave, useLeaveGuard } from '../../../utils/useLeaveGuard';
 import { optionLabel, type AttemptView, type FinishedAttempt, type RunningAttempt, type ShownQuestion } from '../../../utils/mcq';
 
 type Info = {
-  title: string; semester: number | null; duration: number; count: number; status: 'open' | 'closed';
-  me: { name: string; roll: string; ownSemester: boolean; token: string | null; submitted: boolean } | null;
+  title: string; semester: number | null; duration: number; count: number; status: 'open' | 'closed'; strict: boolean;
+  me: { name: string; roll: string; ownSemester: boolean; token: string | null; submitted: boolean; blocked: boolean } | null;
 };
 
 // The token for this exam on this device, so a reload (or a dropped connection) resumes the attempt.
 const tokenKey = (code: string) => `mcq.${code}`;
 const readToken = (code: string) => { try { return localStorage.getItem(tokenKey(code)); } catch { return null; } };
 const saveToken = (code: string, token: string) => { try { localStorage.setItem(tokenKey(code), token); } catch { /* private mode */ } };
+const forgetToken = (code: string) => { try { localStorage.removeItem(tokenKey(code)); } catch { /* private mode */ } };
 
 const post = (url: string, body: unknown) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }));
@@ -35,6 +39,7 @@ export default function McqExamPage() {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) return setError(body.error ?? 'Could not load this exam.');
       setInfo(body as Info);
+      if ((body as Info).me?.blocked) return setView({ state: 'blocked', title: (body as Info).title });
       const saved = (body as Info).me?.token ?? readToken(code);
       if (!saved) return;
       const attempt = await fetch(`/api/mcq/attempt?token=${encodeURIComponent(saved)}`);
@@ -44,6 +49,14 @@ export default function McqExamPage() {
       }
     }).catch(() => setError('Could not load this exam. Check your internet connection.'));
   }, [code]);
+
+  // Strict mode, second time: logged out of the portal and off this exam until the HOD unblocks them.
+  const blockedOut = useCallback(() => {
+    forgetToken(code);
+    setToken(null);
+    setView({ state: 'blocked', title: info?.title ?? '' });
+    supabase.auth.signOut().catch(() => {});
+  }, [code, info?.title]);
 
   const started = (t: string, v: AttemptView) => {
     saveToken(code, t);
@@ -61,24 +74,27 @@ export default function McqExamPage() {
           <Card className="p-8 text-center"><p className="font-semibold text-slate-900">{error}</p></Card>
         ) : !info ? (
           <p className="py-16 text-center text-sm text-slate-500">Loading…</p>
+        ) : view?.state === 'blocked' ? (
+          <BlockedNotice what="exam" />
         ) : view?.state === 'running' && token ? (
-          <Runner code={code} token={token} initial={view} onDone={setView} />
+          <Runner code={code} token={token} initial={view} onDone={setView} onBlocked={blockedOut} />
         ) : view?.state === 'done' ? (
           <Result result={view} token={token} />
         ) : (
-          <Join code={code} info={info} onStarted={started} />
+          <Join code={code} info={info} onStarted={started} onBlocked={blockedOut} />
         )}
       </main>
     </div>
   );
 }
 
-function Join({ code, info, onStarted }: { code: string; info: Info; onStarted: (token: string, view: AttemptView) => void }) {
+function Join({ code, info, onStarted, onBlocked }: { code: string; info: Info; onStarted: (token: string, view: AttemptView) => void; onBlocked: () => void }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [roll, setRoll] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const needsPassword = !info.me?.ownSemester;
 
   const start = async (e: React.FormEvent) => {
@@ -87,7 +103,11 @@ function Join({ code, info, onStarted }: { code: string; info: Info; onStarted: 
     const { ok, body } = await post('/api/mcq/join', { code, name, roll, password, token: readToken(code) })
       .catch(() => ({ ok: false, body: { error: 'Could not reach the server. Check your internet connection.' } }));
     setBusy(false);
-    if (!ok) return toast.error(body.error ?? 'Could not start the exam.');
+    if (!ok) {
+      if (/blocked/i.test(body.error ?? '')) return onBlocked();
+      return toast.error(body.error ?? 'Could not start the exam.');
+    }
+    if (body.view?.state === 'blocked') return onBlocked();
     onStarted(body.token, body.view);
   };
 
@@ -105,6 +125,7 @@ function Join({ code, info, onStarted }: { code: string; info: Info; onStarted: 
         <p className="p-6 text-center font-semibold text-slate-700">This exam is closed.</p>
       ) : (
         <form onSubmit={start} className="space-y-4 p-6">
+          {info.strict && <StrictRules what="exam" closingCounts />}
           <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
             <li>The timer starts when you press <b>Start exam</b> and keeps running even if you close the page.</li>
             <li>Your answers are saved as you pick them. When time is up, the exam is submitted automatically.</li>
@@ -121,7 +142,13 @@ function Join({ code, info, onStarted }: { code: string; info: Info; onStarted: 
           {needsPassword && (
             <Field label="Exam password"><input required value={password} onChange={(e) => setPassword(e.target.value.trim())} autoCapitalize="characters" className={cx(inputClass, 'font-mono uppercase')} /></Field>
           )}
-          <Button type="submit" size="lg" icon={needsPassword ? KeyRound : undefined} loading={busy} className="w-full">Start exam</Button>
+          {info.strict && (
+            <label className="flex items-start gap-2.5 text-sm">
+              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 size-4 accent-indigo-600" />
+              <span>I have read the rules. I understand that leaving the page twice blocks me from this exam.</span>
+            </label>
+          )}
+          <Button type="submit" size="lg" icon={needsPassword ? KeyRound : undefined} loading={busy} disabled={info.strict && !agreed} className="w-full">Start exam</Button>
         </form>
       )}
     </Card>
@@ -133,7 +160,7 @@ const clock = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function Runner({ code, token, initial, onDone }: { code: string; token: string; initial: RunningAttempt; onDone: (v: AttemptView) => void }) {
+function Runner({ code, token, initial, onDone, onBlocked }: { code: string; token: string; initial: RunningAttempt; onDone: (v: AttemptView) => void; onBlocked: () => void }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [answers, setAnswers] = useState(initial.answers);
@@ -145,6 +172,18 @@ function Runner({ code, token, initial, onDone }: { code: string; token: string;
   const latest = useRef(answers);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishing = useRef(false);
+  const [warning, setWarning] = useState(false);
+  const [warned, setWarned] = useState(initial.warnings > 0);
+
+  // Strict mode: leaving the exam page once = warning, twice = blocked. Closing it counts too.
+  useLeaveGuard({
+    active: initial.strict,
+    paused: () => finishing.current,
+    closingCounts: true,
+    report: (kind) => reportLeave('/api/mcq/violation', token, kind),
+    onWarning: () => { setWarned(true); setWarning(true); },
+    onBlocked: () => { finishing.current = true; onBlocked(); },
+  });
 
   const submit = useCallback(async (auto: boolean) => {
     if (finishing.current) return;
@@ -154,12 +193,13 @@ function Runner({ code, token, initial, onDone }: { code: string; token: string;
     for (let tryNo = 0; tryNo < 3; tryNo++) {
       const res = await post('/api/mcq/attempt', { token, answers: latest.current, submit: true, auto }).catch(() => null);
       if (res?.ok && res.body.state === 'done') return onDone(res.body);
+      if (res?.ok && res.body.state === 'blocked') return onBlocked();
       await new Promise((r) => setTimeout(r, 1500));
     }
     finishing.current = false;
     setSubmitting(false);
     toast.error('Could not submit — check your internet connection and press Submit again.');
-  }, [token, onDone, toast]);
+  }, [token, onDone, onBlocked, toast]);
 
   // Tick every second; at zero, submit automatically.
   useEffect(() => {
@@ -188,12 +228,14 @@ function Runner({ code, token, initial, onDone }: { code: string; token: string;
   };
 
   return (
-    <div>
+    <div className={cx(initial.strict && 'select-none')} onCopy={(e) => { if (initial.strict) e.preventDefault(); }} onContextMenu={(e) => { if (initial.strict) e.preventDefault(); }}>
       <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate font-semibold text-slate-900">{initial.title}</p>
-            <p className="text-xs text-slate-500">{initial.name} · {initial.roll} · answered {answered}/{answers.length}</p>
+            <p className="text-xs text-slate-500">{initial.name} · {initial.roll} · answered {answered}/{answers.length}
+              {initial.strict && (warned ? <span className="ml-2 font-semibold text-rose-600">⚠ Warning given — leaving again blocks you</span> : <span className="ml-2">· stay on this page</span>)}
+            </p>
           </div>
           <div className={cx('flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-lg font-bold tabular-nums', left < 60_000 ? 'bg-rose-100 text-rose-700' : left < 300_000 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800')} role="timer" aria-label="Time left">
             <Clock className="size-4" aria-hidden />{clock(left)}
@@ -226,6 +268,7 @@ function Runner({ code, token, initial, onDone }: { code: string; token: string;
         <Button size="lg" icon={Send} loading={submitting} onClick={askSubmit} className="w-full sm:w-auto">Submit answers</Button>
         <p className="text-xs text-slate-500">Saved automatically · submitted for you when the timer reaches 0:00 · exam code {code}</p>
       </div>
+      {warning && <LeaveWarning what="exam" onClose={() => setWarning(false)} />}
     </div>
   );
 }

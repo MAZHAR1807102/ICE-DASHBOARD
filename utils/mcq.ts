@@ -17,6 +17,7 @@ export type McqExam = {
   password: string;
   questions: McqQuestion[];
   shuffle: boolean; // each person gets the questions in their own random order
+  strict: boolean; // leaving the exam page once = warning, twice = blocked until the HOD unblocks
   created_at: string;
   opened_at: string | null;
   closed_at: string | null;
@@ -36,6 +37,10 @@ export type McqAttempt = {
   auto_submitted: boolean;
   score: number | null;
   total: number | null;
+  warnings: number; // strict mode: times they left the page (reset when unblocked)
+  violations: { at: string; kind: string }[]; // every time they left
+  blocked: boolean;
+  blocked_at: string | null;
 };
 
 // A question as the exam page shows it. `picture`: its size, when it has one — the picture itself is
@@ -56,6 +61,8 @@ export type RunningAttempt = {
   answers: (number | null)[];
   deadline: string;
   now: string; // server clock, so the countdown doesn't depend on the device's clock
+  strict: boolean;
+  warnings: number;
 };
 // …and the full review once it is submitted.
 export type FinishedAttempt = {
@@ -69,7 +76,9 @@ export type FinishedAttempt = {
   submittedAt: string;
   review: (ShownQuestion & { answer: number | null; picked: number | null })[];
 };
-export type AttemptView = RunningAttempt | FinishedAttempt;
+// …or, in strict mode after leaving the page twice, nothing until the HOD unblocks them.
+export type BlockedAttempt = { state: 'blocked'; title: string };
+export type AttemptView = RunningAttempt | FinishedAttempt | BlockedAttempt;
 
 // Seconds after the deadline in which a submit still counts (slow phone networks).
 export const SUBMIT_GRACE_SECONDS = 30;

@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { ListChecks } from 'lucide-react';
 
 type Mine = {
-  open: { title: string; code: string; duration: number; count: number; started: boolean }[];
-  taken: { title: string; code: string; done: boolean; score: number | null; total: number | null }[];
+  open: { title: string; code: string; duration: number; count: number; started: boolean; blocked: boolean }[];
+  taken: { title: string; code: string; done: boolean; score: number | null; total: number | null; blocked: boolean }[];
 };
 
 // Student portal strip: MCQ exams open for the student's semester, and their recent scores.
@@ -33,7 +33,9 @@ export default function McqExams() {
                 <p className="text-xs text-slate-500">{e.count} questions · {e.duration} minutes{e.started ? ' · in progress' : ''}</p>
               </div>
             </div>
-            <Link href={`/mcq/${e.code}`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">{e.started ? 'Continue' : 'Start exam'}</Link>
+            {e.blocked
+              ? <span className="rounded-lg bg-rose-100 px-3 py-2 text-sm font-semibold text-rose-700">Blocked — ask the HOD</span>
+              : <Link href={`/mcq/${e.code}`} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">{e.started ? 'Continue' : 'Start exam'}</Link>}
           </div>
         ))}
         {results.length > 0 && (
