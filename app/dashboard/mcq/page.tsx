@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { BarChart3, Copy, FileQuestion, Lock, Pencil, Play, Plus, Share2, Square, Trash2 } from 'lucide-react';
+import { BarChart3, Copy, FileQuestion, ListChecks, Lock, Pencil, Play, Plus, Share2, Square, Trash2 } from 'lucide-react';
 import Modal from '../../components/Modal';
 import { Badge, Button, Card, EmptyState, PageHeader, cx, table } from '../../components/ui';
 import { useConfirm, useToast } from '../../components/Providers';
@@ -24,7 +24,7 @@ export default function McqExamsPage() {
   const confirm = useConfirm();
   const [exams, setExams] = useState<Row[] | null>(null);
   const [editing, setEditing] = useState<Row | 'new' | null>(null);
-  const [results, setResults] = useState<Row | null>(null);
+  const [results, setResults] = useState<{ exam: Row; fix: boolean } | null>(null);
   const [sharing, setSharing] = useState<Row | null>(null);
   const [busy, setBusy] = useState('');
 
@@ -107,7 +107,8 @@ export default function McqExamsPage() {
                           ? <Button size="xs" variant="success" icon={Play} loading={busy === x.id} onClick={() => manage(x, 'open')}>{x.status === 'closed' ? 'Reopen' : 'Open'}</Button>
                           : <Button size="xs" variant="danger" icon={Square} loading={busy === x.id} onClick={() => manage(x, 'close')}>Close</Button>}
                         {x.status !== 'draft' && <Button size="xs" variant="secondary" icon={Share2} onClick={() => setSharing(x)}>Share</Button>}
-                        <Button size="xs" variant="secondary" icon={BarChart3} onClick={() => setResults(x)}>Results</Button>
+                        <Button size="xs" variant="secondary" icon={BarChart3} onClick={() => setResults({ exam: x, fix: false })}>Results</Button>
+                        {x.joined > 0 && <Button size="xs" variant="secondary" icon={ListChecks} onClick={() => setResults({ exam: x, fix: true })} title="Correct the answer key and re-mark everyone who took it">Fix key</Button>}
                         <Button size="xs" variant="ghost" icon={x.joined ? Lock : Pencil} onClick={() => setEditing(x)} aria-label={`Edit ${x.title}`} />
                         <Button size="xs" variant="ghost" icon={Trash2} onClick={() => remove(x)} aria-label={`Delete ${x.title}`} className="hover:bg-rose-50 hover:text-rose-600" />
                       </div>
@@ -128,7 +129,7 @@ export default function McqExamsPage() {
           onSaved={() => { setEditing(null); load(); }}
         />
       )}
-      {results && <ExamResults exam={results} onClose={() => { setResults(null); load(); }} />}
+      {results && <ExamResults exam={results.exam} startFixing={results.fix} onClose={() => { setResults(null); load(); }} />}
       {sharing && <ShareExam exam={sharing} onClose={() => setSharing(null)} />}
     </div>
   );

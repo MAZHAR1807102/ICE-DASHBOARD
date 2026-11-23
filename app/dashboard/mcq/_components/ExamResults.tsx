@@ -13,9 +13,9 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: '2-di
 
 // Everyone who joined an exam, best score first, with an Excel download, a reset (sit again) and
 // "Fix answer key" (correct the key after the exam and re-mark everyone).
-export default function ExamResults({ exam: initial, onClose }: { exam: McqExam; onClose: () => void }) {
+export default function ExamResults({ exam: initial, startFixing = false, onClose }: { exam: McqExam; startFixing?: boolean; onClose: () => void }) {
   const [exam, setExam] = useState(initial);
-  const [fixing, setFixing] = useState(false);
+  const [fixing, setFixing] = useState(startFixing);
   const toast = useToast();
   const confirm = useConfirm();
   const [attempts, setAttempts] = useState<McqAttempt[] | null>(null);
