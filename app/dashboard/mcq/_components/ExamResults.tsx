@@ -1,17 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { FileDown, RotateCcw, Unlock } from 'lucide-react';
+import { FileDown, ListChecks, RotateCcw, Unlock } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { Badge, Button, cx, table } from '../../../components/ui';
 import { useConfirm, useToast } from '../../../components/Providers';
 import { supabase } from '../../../../utils/supabase';
+import FixAnswerKey from './FixAnswerKey';
 import { SUBMIT_GRACE_SECONDS, cleanAnswers, gradeAnswers, type McqAttempt, type McqExam } from '../../../../utils/mcq';
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-// Everyone who joined an exam, best score first, with an Excel download and a reset (sit again).
-export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose: () => void }) {
+// Everyone who joined an exam, best score first, with an Excel download, a reset (sit again) and
+// "Fix answer key" (correct the key after the exam and re-mark everyone).
+export default function ExamResults({ exam: initial, onClose }: { exam: McqExam; onClose: () => void }) {
+  const [exam, setExam] = useState(initial);
+  const [fixing, setFixing] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
   const [attempts, setAttempts] = useState<McqAttempt[] | null>(null);
@@ -75,7 +79,10 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
         <p className="py-8 text-center text-sm text-slate-500">Nobody has joined this exam yet.</p>
       ) : (
         <div className="space-y-4">
-          <div className="flex justify-end"><Button size="sm" variant="secondary" icon={FileDown} onClick={download}>Download Excel</Button></div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="secondary" icon={ListChecks} onClick={() => setFixing(true)}>Fix answer key &amp; re-mark</Button>
+            <Button size="sm" variant="secondary" icon={FileDown} onClick={download}>Download Excel</Button>
+          </div>
           <div className={table.wrap}>
             <table className={table.table}>
               <thead className={table.head}>
@@ -108,6 +115,18 @@ export default function ExamResults({ exam, onClose }: { exam: McqExam; onClose:
             </table>
           </div>
         </div>
+      )}
+      {fixing && attempts && (
+        <FixAnswerKey
+          exam={exam}
+          attempts={attempts}
+          onClose={() => setFixing(false)}
+          onDone={() => {
+            setFixing(false);
+            supabase.from('mcq_exams').select('*').eq('id', exam.id).maybeSingle<McqExam>().then(({ data }) => { if (data) setExam(data); });
+            load();
+          }}
+        />
       )}
     </Modal>
   );

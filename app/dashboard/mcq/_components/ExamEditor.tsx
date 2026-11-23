@@ -152,7 +152,7 @@ export default function ExamEditor({ exam, locked, onClose, onSaved }: {
     }
     const cleaned = uploaded.map((q) => ({
       text: q.text.trim(), options: q.options.map((o) => o.trim()), answer: q.answer,
-      ...(q.image ? { image: q.image } : {}), ...(q.labels ? { labels: q.labels } : {}),
+      ...(q.image ? { image: q.image } : {}), ...(q.labels ? { labels: q.labels } : {}), ...(q.number !== undefined ? { number: q.number } : {}),
     }));
     const row = { title: title.trim(), semester, duration_minutes: minutes, password, strict, ...(locked ? {} : { questions: cleaned, shuffle }) };
     const { error } = exam

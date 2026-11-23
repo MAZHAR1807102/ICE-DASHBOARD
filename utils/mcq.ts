@@ -4,7 +4,9 @@
 // `image`: the question (stem + options) cut from the PDF as a picture, shown instead of the text so
 // equations, tables and figures look exactly as printed. `labels`: how the options are lettered there.
 export type McqImage = { path: string; width: number; height: number };
-export type McqQuestion = { text: string; options: string[]; answer: number | null; image?: McqImage; labels?: string[] };
+// `number`: the question's number as printed in the uploaded file, so a separate answer key is matched by
+// that number and not by position (a question the reader missed must not shift every later answer).
+export type McqQuestion = { text: string; options: string[]; answer: number | null; image?: McqImage; labels?: string[]; number?: number };
 export type McqStatus = 'draft' | 'open' | 'closed';
 
 export type McqExam = {
@@ -182,6 +184,9 @@ const KEY_HEADING = /^(?:answer\s*key|answers?|key|উত্তরমালা|�
 const KEY_PAIR = new RegExp(`(\\d{1,3})\\s*[.)\\-:=।]?\\s*[(\\[]?(${LETTER})(?![a-zA-Z\\u0980-\\u09FF])[)\\]]?`, 'g');
 // "Read the following and answer questions 37 and 38:" / "নিচের উদ্দীপকটি পড়ে ৩৭ ও ৩৮ নং প্রশ্নের উত্তর দাও"
 const PASSAGE_START = /(?:read|study|observe|look at|consider|refer to)\b[^.:]{0,80}?\bquestions?\s*(?:no\.?\s*)?(\d{1,3})\s*(?:and|&|,|-|–|to)\s*(\d{1,3})|(?:উদ্দীপক|অনুচ্ছেদ|চিত্র|ছক)[^।:]{0,60}?(\d{1,3})\s*(?:ও|এবং|,|-|–|থেকে)\s*(\d{1,3})/i;
+// A question number with a stray fragment in front of it — a superscript or the tail of a formula from the
+// other column ("i)ⁿ 90. arg(z₁z₂) =", ". 84. 3+2i sin θ …"). Only taken for the next number in sequence.
+const STRAY_BEFORE_NUMBER = /^\S{1,4}\s+(\d{1,3})\s*[.)]\s+(.*)$/;
 const CORRECT_MARK = /(?:^\s*[*✓✔]\s*|\s*[*✓✔]\s*$|\s*\((?:correct|ans)\)\s*$)/i;
 
 // A line that is only "1. b 2. c 3. a" pairs (an answer key without a heading).
@@ -268,8 +273,12 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
       continue;
     }
 
-    const q = line.match(QUESTION_START);
     const lastN: number = drafts.length ? drafts[drafts.length - 1].n : 0;
+    let q = line.match(QUESTION_START);
+    if (!q && current && current.options.length >= 2 && !labelAtStart(line)) {
+      const late = line.match(STRAY_BEFORE_NUMBER);
+      if (late && Number(late[1]) === lastN + 1) q = late;
+    }
     // The next number in sequence always starts a question (so one damaged question can't swallow the rest).
     if (q && Number(q[1]) > lastN && Number(q[1]) <= lastN + 5 && (!current || current.options.length >= 2 || !current.text.length || Number(q[1]) === lastN + 1)) {
       current = { n: Number(q[1]), text: [], options: [], answer: null, inOptions: false };
@@ -332,7 +341,15 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
     const own = d.text.reduce((a, b) => (a ? joinWrapped(a, b) : b), '').trim();
     const shared = passages.find((p) => d.n >= p.from && d.n <= p.to && p.text.length);
     const text = shared ? `${shared.text.reduce((a, b) => (a ? joinWrapped(a, b) : b), '')}\n\n${own}` : own;
-    return { text, options, answer, labels: labelSet(d.letter) };
+    return { text, options, answer, labels: labelSet(d.letter), number: d.n };
+  });
+  // Numbers that were never found: their text is probably inside the question before them.
+  drafts.forEach((d, i) => {
+    const prev = i ? drafts[i - 1].n : 0;
+    if (d.n > prev + 1) {
+      const gap = d.n - prev === 2 ? `Question ${prev + 1} was` : `Questions ${prev + 1}–${d.n - 1} were`;
+      warnings.push(`${gap} not found in the file — ${prev ? `check question ${prev} (its text may include it) and ` : ''}add it by hand.`);
+    }
   });
   if (!questions.length) warnings.push('No numbered questions were found. Make sure each question starts with a number like "1." or "Q1)".');
   return { questions, numbers: drafts.map((d) => d.n), warnings };
@@ -347,7 +364,8 @@ export function parseMcqText(input: string | string[]): { questions: McqQuestion
 //   1. Stack                                          — matched to that question's option text
 //   a table: a row of question numbers, the next row their letters (1 2 3 4 / b c a d)
 //   only letters, in question order: b c a d …        — when the key has no numbers at all
-// Question k of the key is question k in the editor.
+//   a CSV file: Question,Answer / 1,c / 2,a …
+// Key answer k goes to the question printed as number k (by position for questions typed in by hand).
 // ---------------------------------------------------------------------------------------------
 
 const LETTER_ONLY = new RegExp(`^[(\\[]?(${LETTER})[)\\].]?$`);
@@ -356,6 +374,8 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9ঀ-৿]+/g, ' ').t
 export function parseAnswerKey(input: string | string[]) {
   const lines = (Array.isArray(input) ? input : input.split(/\r?\n/))
     .map((l) => toAsciiDigits(l.replace(/ /g, ' ')).replace(/\s+/g, ' ').trim())
+    // A CSV row "12,c" (a "Question,Answer" header is skipped below).
+    .map((l) => l.replace(/^(\d{1,3})\s*,\s*/, '$1. '))
     // A label in front ("Answers: 1-b, 2-c") is dropped; a heading on its own line is skipped below.
     .map((l) => l.replace(/^(?:answer\s*key|answers?|key|উত্তরমালা|উত্তর|সঠিক\s*উত্তর)\s*[:：-]\s*/i, ''))
     .filter(Boolean);
@@ -405,10 +425,14 @@ export function parseAnswerKey(input: string | string[]) {
 // Ticks the answers from a key onto the questions. Returns the new questions and what didn't match.
 export function applyAnswerKey(questions: McqQuestion[], key: Map<number, string>) {
   const missing: number[] = [], unclear: number[] = [];
+  const used = new Set<number>();
   let matched = 0;
   const updated = questions.map((q, i) => {
-    const raw = key.get(i + 1);
-    if (raw === undefined) { missing.push(i + 1); return q; }
+    // By the number printed on the question (when it came from a file), otherwise by position.
+    const n = q.number ?? i + 1;
+    used.add(n);
+    const raw = key.get(n);
+    if (raw === undefined) { missing.push(n); return q; }
     let answer: number | null = raw.length <= 3 ? letterIndex(raw.replace(/[()[\].]/g, '')) : null;
     if (answer === null) {
       // The answer written out: match the option text (exact first, then contained).
@@ -418,12 +442,62 @@ export function applyAnswerKey(questions: McqQuestion[], key: Map<number, string
       const contained = options.findIndex((o) => o && (want.includes(o) || o.includes(want)));
       answer = exact >= 0 ? exact : contained >= 0 && want.length >= 2 ? contained : null;
     }
-    if (answer === null || answer >= q.options.length || (!q.image && !q.options[answer]?.trim())) { unclear.push(i + 1); return q; }
+    if (answer === null || answer >= q.options.length || (!q.image && !q.options[answer]?.trim())) { unclear.push(n); return q; }
     matched++;
     return { ...q, answer };
   });
-  const extra = [...key.keys()].filter((n) => n > questions.length).length;
+  const extra = [...key.keys()].filter((n) => !used.has(n)).length;
   return { questions: updated, matched, missing, unclear, extra };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Correcting the answer key of an exam that has already been taken.
+//
+// The exam's questions are matched to a fresh reading of the same question set (with its answer key)
+// by their text — the stored order is followed, so each question is looked for just after the one
+// before it. Questions saved with their printed number are matched by that number instead. Only the
+// correct answers change (and the printed number is kept); the questions, options and pictures stay.
+// ---------------------------------------------------------------------------------------------
+
+const trigrams = (s: string) => {
+  const t = ` ${norm(s)} `;
+  const out = new Set<string>();
+  for (let i = 0; i + 3 <= t.length; i++) out.add(t.slice(i, i + 3));
+  return out;
+};
+// Dice similarity of two texts (0 … 1).
+function similarity(a: string, b: string) {
+  const x = trigrams(a), y = trigrams(b);
+  if (!x.size || !y.size) return a.trim() === b.trim() ? 1 : 0;
+  let both = 0;
+  for (const g of x) if (y.has(g)) both++;
+  return (2 * both) / (x.size + y.size);
+}
+const likeness = (a: McqQuestion, b: McqQuestion) => 0.7 * similarity(a.text, b.text) + 0.3 * similarity(a.options.join(' '), b.options.join(' '));
+
+export type KeyChange = { index: number; number: number; from: number | null; to: number };
+export function correctedAnswers(stored: McqQuestion[], fresh: McqQuestion[]) {
+  const changes: KeyChange[] = [];
+  const unmatched: number[] = []; // positions (1-based) in the exam that could not be matched or have no answer in the key
+  let next = 0; // where to look in the fresh reading
+  const questions = stored.map((q, i) => {
+    let j = -1;
+    if (q.number !== undefined) j = fresh.findIndex((f) => f.number === q.number);
+    else {
+      let best = 0;
+      for (let k = next; k < Math.min(fresh.length, next + 6); k++) {
+        const score = likeness(q, fresh[k]);
+        if (score > best) { best = score; j = k; }
+      }
+      if (best < 0.6) j = -1;
+    }
+    const f = j >= 0 ? fresh[j] : undefined;
+    if (f) next = j + 1;
+    if (!f || f.answer === null || f.answer >= q.options.length) { unmatched.push(i + 1); return q; }
+    if (f.answer !== q.answer) changes.push({ index: i, number: f.number ?? j + 1, from: q.answer, to: f.answer });
+    return { ...q, answer: f.answer, ...(f.number !== undefined ? { number: f.number } : {}) };
+  });
+  return { questions, changes, unmatched };
 }
 
 // ---------------------------------------------------------------------------------------------

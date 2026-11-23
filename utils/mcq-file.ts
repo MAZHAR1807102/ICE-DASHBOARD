@@ -42,9 +42,9 @@ export async function readQuestionSet(file: File): Promise<QuestionSetFile> {
     return { lines: value.split(/\r?\n/) };
   }
 
-  if (name.endsWith('.txt')) return { lines: (await file.text()).split(/\r?\n/) };
+  if (name.endsWith('.txt') || name.endsWith('.csv')) return { lines: (await file.text()).split(/\r?\n/) };
 
-  throw new Error('Upload a PDF, Word (.docx) or text (.txt) file.');
+  throw new Error('Upload a PDF, Word (.docx), text (.txt) or CSV file.');
 }
 
 export const readQuestionFile = async (file: File) => (await readQuestionSet(file)).lines;
